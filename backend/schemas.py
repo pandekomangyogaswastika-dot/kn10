@@ -273,6 +273,22 @@ class PurchaseOrderCreate(BaseModel):
     tax_mode: str = ""                # P0-1 — "" = ikut config | "ppn" (PPN Masukan) | "non_ppn"
 
 
+class PurchaseOrderAmend(BaseModel):
+    """Phase 7.2 — amandemen PO (revisi item/supplier/tanggal/catatan) + re-approval.
+    `items` opsional: bila None → item tidak diubah. `reason` WAJIB (jejak audit)."""
+    reason: str                       # WAJIB — alasan amandemen (audit)
+    items: Optional[List[POItemCreate]] = None
+    supplier_id: Optional[str] = None
+    supplier_name: Optional[str] = None
+    supplier_contact: Optional[str] = None
+    warehouse_id: Optional[str] = None
+    expected_delivery_date: Optional[str] = None
+    notes: Optional[str] = None
+    order_discount_percent: Optional[float] = None
+    tax_mode: Optional[str] = None
+    amended_by: str = "Admin"
+
+
 # ─── Procurement Schemas (Fase 3 — Supplier Master + Pengelolaan Kas) ─────────
 
 class SupplierCreate(BaseModel):
