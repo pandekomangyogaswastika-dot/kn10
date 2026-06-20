@@ -1,26 +1,34 @@
 [
   {
-    "content": "Phase 8: Riset + skema + POC (28/28 PASS)",
+    "content": "Backend: write & run test_po_amendment_poc.py verifying amend endpoint (reason mandatory, partial-receive guards, re-approval reset, snapshot+diff, idempotent inbound tasks)",
     "status": "completed"
   },
   {
-    "content": "Backend: uom_service helpers, schemas, PO quantity_base, GR catch-weight + weight_kg, on_order base",
-    "status": "completed"
+    "content": "Backend refactor: extract amend logic + _diff_po_items into services/po_amendment_service.py; thin router wrapper → purchase_orders.py < 800 lines (fix 2 compliance FAILs)",
+    "status": "in_progress"
   },
   {
-    "content": "Frontend: PO unit picker + hint; GR catch-weight modal; RollsTable weight col; seed GSM/width",
-    "status": "completed"
+    "content": "Frontend: add 'Amend / Revisi PO' trigger button in PODetailPanel (admin/manager, amendable statuses)",
+    "status": "pending"
   },
   {
-    "content": "Gates green (119/0/0, esbuild 0, api_contract 0/0, compliance 0 FAIL)",
-    "status": "completed"
+    "content": "Frontend: create POAmendModal.jsx (edit supplier/warehouse/date/notes/items + MANDATORY reason)",
+    "status": "pending"
   },
   {
-    "content": "testing_agent_v3 E2E (BE 9/9) + manual UI verify (PO picker + GR modal)",
-    "status": "completed"
+    "content": "Frontend: create POAmendmentHistory.jsx (version timeline + per-version diff + snapshot_before) in PO Detail; add 'amended' meta to POTimeline",
+    "status": "pending"
   },
   {
-    "content": "Update plan.md + SESSION_HANDOFF.md (Session #043)",
-    "status": "completed"
+    "content": "Frontend: wire handleAmendPO + state in PurchaseOrderManagement.jsx",
+    "status": "pending"
+  },
+  {
+    "content": "Run all gates (seed_reset, verify_api_contract, ux_audit, validate_compliance 0 FAIL, check_nav_map, esbuild) + register FE bindings",
+    "status": "pending"
+  },
+  {
+    "content": "testing_agent_v3 backend + frontend for PO Amendment; fix reported bugs",
+    "status": "pending"
   }
 ]
