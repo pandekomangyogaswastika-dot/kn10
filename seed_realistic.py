@@ -162,6 +162,7 @@ async def seed_products():
             "name": "Batik Mega Mendung Premium", "category": "Batik", "variant": "Premium",
             "color": "Biru-Coklat", "motif": "Mega Mendung", "grade": "A",
             "supplier": "Cirebon Craft", "base_unit": "meter", "price": 185000,
+            "gramasi": 120, "lebar": 1.15,
             "image": "https://images.unsplash.com/photo-1761516659766-c092d4b1209d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2MzR8MHwxfHNlYXJjaHw0fHxiYXRpayUyMGluZG9uZXNpYSUyMGZhYnJpYyUyMHRyYWRpdGlvbmFsJTIwdGV4dGlsZSUyMHBhdHRlcm58ZW58MHx8fHwxNzc4NjkyMDU3fDA&ixlib=rb-4.1.0&q=85",
             "status": "active", "uom_conversions": [], "batch_lot_rolls": [],
             "created_at": ago(days=180), "updated_at": ago(days=2)
@@ -171,6 +172,7 @@ async def seed_products():
             "name": "Tenun Ikat Garuda Premium", "category": "Tenun", "variant": "Premium",
             "color": "Merah-Emas", "motif": "Garuda", "grade": "A",
             "supplier": "NTT Weaving Co", "base_unit": "meter", "price": 225000,
+            "gramasi": 210, "lebar": 1.20,
             "image": "https://images.unsplash.com/photo-1748141951488-9c9fb9603daf?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzV8MHwxfHNlYXJjaHwyfHx0ZW51biUyMGlrYXQlMjBpbmRvbmVzaWFuJTIwd292ZW4lMjB0ZXh0aWxlJTIwdHJhZGl0aW9uYWwlMjBmYWJyaWN8ZW58MHx8fHwxNzc4NjkyMDY1fDA&ixlib=rb-4.1.0&q=85",
             "status": "active", "uom_conversions": [], "batch_lot_rolls": [],
             "created_at": ago(days=175), "updated_at": ago(days=5)
@@ -180,6 +182,7 @@ async def seed_products():
             "name": "Lurik Klasik Solo", "category": "Lurik", "variant": "Klasik",
             "color": "Coklat-Putih", "motif": "Garis Vertikal", "grade": "A",
             "supplier": "Solo Weave", "base_unit": "meter", "price": 95000,
+            "gramasi": 170, "lebar": 1.10,
             "image": "https://images.unsplash.com/photo-1761516659491-bf9a672d64c1?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2MzR8MHwxfHNlYXJjaHwzfHxiYXRpayUyMGluZG9uZXNpYSUyMGZhYnJpYyUyMHRyYWRpdGlvbmFsJTIwdGV4dGlsZSUyMHBhdHRlcm58ZW58MHx8fHwxNzc4NjkyMDU3fDA&ixlib=rb-4.1.0&q=85",
             "status": "active", "uom_conversions": [], "batch_lot_rolls": [],
             "created_at": ago(days=170), "updated_at": ago(days=1)
@@ -189,6 +192,7 @@ async def seed_products():
             "name": "Songket Palembang Benang Emas", "category": "Songket", "variant": "Premium",
             "color": "Emas-Hitam", "motif": "Bunga Cengkeh", "grade": "A+",
             "supplier": "Palembang Silk House", "base_unit": "meter", "price": 450000,
+            "gramasi": 280, "lebar": 1.05,
             "image": "https://images.unsplash.com/photo-1594100618558-978ea7266c0a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NDh8MHwxfHNlYXJjaHwzfHxzb25na2V0JTIwZmFicmljJTIwZ29sZCUyMHRocmVhZCUyMGluZG9uZXNpYW4lMjBzaWxrJTIwdGV4dGlsZXxlbnwwfHx8fDE3Nzg2OTIwNjV8MA&ixlib=rb-4.1.0&q=85",
             "status": "active", "uom_conversions": [], "batch_lot_rolls": [],
             "created_at": ago(days=160), "updated_at": ago(days=3)
@@ -198,6 +202,7 @@ async def seed_products():
             "name": "Ulos Batak Ragidup", "category": "Ulos", "variant": "Tradisional",
             "color": "Biru-Oranye", "motif": "Ragidup", "grade": "A",
             "supplier": "Toba Craft", "base_unit": "meter", "price": 320000,
+            "gramasi": 230, "lebar": 0.90,
             "image": "https://images.unsplash.com/photo-1749367288395-f874bb54bc8a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzV8MHwxfHNlYXJjaHw0fHx0ZW51biUyMGlrYXQlMjBpbmRvbmVzaWFuJTIwd292ZW4lMjB0ZXh0aWxlJTIwdHJhZGl0aW9uYWwlMjBmYWJyaWN8ZW58MHx8fHwxNzc4NjkyMDY1fDA&ixlib=rb-4.1.0&q=85",
             "status": "active", "uom_conversions": [], "batch_lot_rolls": [],
             "created_at": ago(days=155), "updated_at": ago(days=7)
@@ -207,6 +212,7 @@ async def seed_products():
             "name": "Jumputan Palembang Pelangi", "category": "Jumputan", "variant": "Standard",
             "color": "Multicolor", "motif": "Pelangi Jumputan", "grade": "B",
             "supplier": "Palembang Silk House", "base_unit": "meter", "price": 145000,
+            "gramasi": 150, "lebar": 1.15,
             "image": "https://images.unsplash.com/photo-1761515315375-1315503bb3ce?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2MzR8MHwxfHNlYXJjaHwyfHxiYXRpayUyMGluZG9uZXNpYSUyMGZhYnJpYyUyMHRyYWRpdGlvbmFsJTIwdGV4dGlsZSUyMHBhdHRlcm58ZW58MHx8fHwxNzc4NjkyMDU3fDA&ixlib=rb-4.1.0&q=85",
             "status": "active", "uom_conversions": [], "batch_lot_rolls": [],
             "created_at": ago(days=120), "updated_at": ago(days=10)
@@ -216,6 +222,7 @@ async def seed_products():
             "name": "Endek Bali Rangrang", "category": "Endek", "variant": "Premium",
             "color": "Merah-Coklat", "motif": "Rangrang", "grade": "A",
             "supplier": "Bali Weave Studio", "base_unit": "meter", "price": 280000,
+            "gramasi": 195, "lebar": 1.15,
             "image": "https://images.unsplash.com/photo-1749367288413-994ae375d2f6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzV8MHwxfHNlYXJjaHwzfHx0ZW51biUyMGlrYXQlMjBpbmRvbmVzaWFuJTIwd292ZW4lMjB0ZXh0aWxlJTIwdHJhZGl0aW9uYWwlMjBmYWJyaWN8ZW58MHx8fHwxNzc4NjkyMDY1fDA&ixlib=rb-4.1.0&q=85",
             "status": "active", "uom_conversions": [], "batch_lot_rolls": [],
             "created_at": ago(days=100), "updated_at": ago(days=4)

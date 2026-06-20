@@ -63,17 +63,33 @@ def _variable(product: Dict[str, Any], from_u: str, to_u: str) -> Optional[float
     return None
 
 
-def _catch_weight(product: Dict[str, Any], from_u: str, to_u: str) -> Optional[float]:
-    """Sub-fase 1.13 — konversi kg ↔ base(meter) via catch-weight.
-    kg per 1 meter = gramasi(gsm) × lebar(meter) / 1000. Butuh gramasi & lebar > 0.
+def product_kg_per_meter(product: Dict[str, Any]) -> float:
+    """Faktor catch-weight: kg per 1 BASE unit (meter).
+
+    Prioritas: field eksplisit `kg_per_meter` (>0) → else turunan `gramasi(gsm) × lebar(m) / 1000`.
+    Mengembalikan 0.0 bila tidak tersedia (produk tanpa data berat).
     """
-    base = _norm(product.get("base_unit", "meter"))
+    try:
+        explicit = float(product.get("kg_per_meter") or 0)
+    except (TypeError, ValueError):
+        explicit = 0.0
+    if explicit > 0:
+        return explicit
     try:
         gsm = float(product.get("gramasi") or 0)
         width = float(product.get("lebar") or 0)
     except (TypeError, ValueError):
-        return None
-    kg_per_base = gsm * width / 1000.0
+        return 0.0
+    v = gsm * width / 1000.0
+    return v if v > 0 else 0.0
+
+
+def _catch_weight(product: Dict[str, Any], from_u: str, to_u: str) -> Optional[float]:
+    """Sub-fase 1.13 / Fase 8 — konversi kg ↔ base(meter) via catch-weight.
+    kg per 1 meter = `kg_per_meter` eksplisit, atau gramasi(gsm) × lebar(meter) / 1000.
+    """
+    base = _norm(product.get("base_unit", "meter"))
+    kg_per_base = product_kg_per_meter(product)
     if kg_per_base <= 0:
         return None
     if from_u == "kg" and to_u == base:
@@ -135,3 +151,51 @@ def from_base(product: Dict[str, Any], base_qty: float, unit: str,
               fixed_factors: Dict[str, float], precision: int = 2) -> float:
     """Konversi qty (dalam base unit) ke `unit` tampilan."""
     return convert(product, base_qty, product.get("base_unit", "meter"), unit, fixed_factors, precision)
+
+
+def resolve_roll_measures(product: Dict[str, Any], task_unit: str,
+                          length_in: float, weight_in: float,
+                          fixed_factors: Dict[str, float]) -> Dict[str, float]:
+    """Fase 8 (Catch-weight) — resolusi ukuran SATU roll fisik saat Goods Receipt.
+
+    Mengembalikan dict {length_base, weight_kg, task_qty}:
+      - length_base : panjang roll dlm BASE unit produk (meter) → qty stok inventori.
+      - weight_kg   : berat roll (kg) → catch-weight aktual yg disimpan di roll.
+      - task_qty    : kontribusi roll thd qty diterima dlm SATUAN TASK (utk validasi Σ).
+
+    Aturan (pilihan owner: faktor default per-produk + override AKTUAL saat GR):
+      • task_unit == 'kg' (PO per berat):
+          - weight = weight_in; length = length_in (meter aktual) bila diisi,
+            else turunan weight/kgpm (butuh faktor). task_qty = weight.
+      • task_unit panjang (meter/yard/…):
+          - length_base = to_base(length_in); weight = weight_in (aktual) bila diisi,
+            else estimasi length_base × kgpm (0 bila tak ada faktor). task_qty = length_in.
+    """
+    base = _norm(product.get("base_unit", "meter"))
+    tu = _norm(task_unit) or base
+    kgpm = product_kg_per_meter(product)
+    L = float(length_in or 0)
+    W = float(weight_in or 0)
+    sku = product.get("sku") or product.get("id") or "?"
+
+    if tu == "kg":
+        if W <= 0 and L <= 0:
+            raise HTTPException(status_code=400, detail=f"Roll {sku}: isi berat (kg) atau panjang (m).")
+        weight = round(W if W > 0 else L * kgpm, 3)
+        if L > 0:
+            length_base = round(L, 2)
+        else:
+            if kgpm <= 0:
+                raise HTTPException(status_code=400, detail=(
+                    f"Roll {sku}: tak bisa menurunkan panjang dari berat — "
+                    f"isi gramasi & lebar (atau kg_per_meter) produk, atau masukkan panjang aktual."))
+            length_base = round(W / kgpm, 2)
+        task_qty = weight
+    else:
+        if L <= 0:
+            raise HTTPException(status_code=400, detail=f"Roll {sku}: panjang ({task_unit}) harus > 0.")
+        length_base = to_base(product, L, task_unit, fixed_factors)
+        weight = round(W if W > 0 else length_base * kgpm, 3)
+        task_qty = round(L, 2)
+
+    return {"length_base": length_base, "weight_kg": weight, "task_qty": round(task_qty, 3)}

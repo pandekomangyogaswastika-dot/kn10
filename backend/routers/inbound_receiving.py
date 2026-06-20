@@ -305,44 +305,47 @@ async def complete_inbound_receiving(
         default_dye_lot = (payload.dye_lot if payload else "") or task.get("dye_lot") or lot
         default_grade = (payload.grade if payload else "") or task.get("grade") or "A"
 
-        # Sub-fase 1.13 — roll length disimpan dalam BASE unit produk (konversi bila perlu).
+        # Fase 8 (Catch-weight) — roll length dlm BASE unit (meter) + weight_kg AKTUAL.
         product_doc = safe_doc(await db.products.find_one({"id": task["product_id"]}, {"_id": 0})) or {}
         gr_base_unit = product_doc.get("base_unit", "meter")
         gr_task_unit = task.get("unit", "meter")
-        _need_conv = (gr_task_unit or "").strip().lower() != (gr_base_unit or "meter").strip().lower()
-        _factors = None
-        if _need_conv:
-            from services.uom_service import to_base, load_fixed_factors
-            _factors = await load_fixed_factors()
+        from services.uom_service import load_fixed_factors, resolve_roll_measures
+        _factors = await load_fixed_factors()
+        _is_weight_task = (gr_task_unit or "").strip().lower() == "kg"
 
-        def _to_base_qty(q_task: float) -> float:
-            if _need_conv:
-                return round(to_base(product_doc, q_task, gr_task_unit, _factors), 2)
-            return round(q_task, 2)
-
-        # P0-4 — bila payload.rolls diisi → MULTI roll (panjang/dye_lot/grade per roll).
-        # Validasi Σ panjang ≈ qty diterima (unit task). Bila kosong → satu roll.
+        # P0-4 + Fase 8 — payload.rolls → MULTI roll (panjang m + berat kg + dye_lot/grade per roll).
+        # Validasi Σ kontribusi (task_qty) ≈ qty diterima (SATUAN task). Bila kosong → satu roll.
         roll_specs: List[Dict[str, Any]] = []
         if payload and payload.rolls:
-            total_line = round(sum(float(r.length or 0) for r in payload.rolls), 2)
-            if total_line <= 0:
-                raise HTTPException(status_code=400, detail="Total panjang roll harus lebih dari 0.")
+            measures = [resolve_roll_measures(product_doc, gr_task_unit,
+                                              float(r.length or 0), float(r.weight or 0), _factors)
+                        for r in payload.rolls]
+            total_task = round(sum(m["task_qty"] for m in measures), 2)
+            if total_task <= 0:
+                raise HTTPException(status_code=400, detail="Total ukuran roll harus lebih dari 0.")
             tol_line = max(0.5, round(final_qty * 0.02, 2))
-            if abs(total_line - final_qty) > tol_line:
+            if abs(total_task - final_qty) > tol_line:
                 raise HTTPException(
                     status_code=400,
-                    detail=(f"Total panjang roll ({total_line:g}) tidak cocok dengan qty diterima "
+                    detail=(f"Total roll ({total_task:g} {gr_task_unit}) tidak cocok dengan qty diterima "
                             f"({final_qty:g} {gr_task_unit}, toleransi ±{tol_line:g})."))
-            for r in payload.rolls:
+            for r, m in zip(payload.rolls, measures):
                 roll_specs.append({
-                    "length_base": _to_base_qty(float(r.length or 0)),
+                    "length_base": m["length_base"],
+                    "weight_kg": m["weight_kg"],
                     "dye_lot": (r.dye_lot or default_dye_lot),
                     "grade": (r.grade or default_grade),
                     "defects": list(r.defects or []),
                 })
         else:
+            m = resolve_roll_measures(
+                product_doc, gr_task_unit,
+                0.0 if _is_weight_task else final_qty,   # length_in (m) utk PO per-panjang
+                final_qty if _is_weight_task else 0.0,   # weight_in (kg) utk PO per-berat
+                _factors)
             roll_specs.append({
-                "length_base": _to_base_qty(final_qty),
+                "length_base": m["length_base"],
+                "weight_kg": m["weight_kg"],
                 "dye_lot": default_dye_lot,
                 "grade": default_grade,
                 "defects": [],
@@ -388,6 +391,8 @@ async def complete_inbound_receiving(
                 "length_initial": spec_len,
                 "length_remaining": spec_len,
                 "unit": gr_base_unit,
+                "weight_kg": spec.get("weight_kg", 0.0),   # Fase 8 — catch-weight aktual roll
+                "weight_unit": "kg",
                 "grade": spec["grade"],
                 "defects": spec["defects"],
                 "status": roll_status,
@@ -417,6 +422,7 @@ async def complete_inbound_receiving(
                 "movement_type": "inbound_receiving",
                 "quantity": spec_len,
                 "unit": gr_base_unit,
+                "weight_kg": spec.get("weight_kg", 0.0),   # Fase 8 — catch-weight
                 "batch": task.get("batch", ""),
                 "lot": lot,
                 "roll_id": roll_doc["id"],

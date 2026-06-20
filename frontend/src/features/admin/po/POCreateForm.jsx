@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, XCircle, Sparkles, AlertTriangle, Receipt } from "lucide-react";
+import { Plus, XCircle, Sparkles, AlertTriangle, Receipt, Scale } from "lucide-react";
 import { formatCurrency } from "../../../utils/formatters";
 import axios, { API } from "../../../services/apiClient";
 import KNSelect from "../../../components/KNSelect";
@@ -111,6 +111,34 @@ export default function POCreateForm({
     resolveItemPrice(v, newItem.quantity, baseUnit);
   }
 
+  // Fase 8 (Catch-weight) — faktor kg per base unit & opsi satuan order per item.
+  const selProduct = products.find((p) => p.id === newItem.product_id);
+  const selBaseUnit = selProduct?.base_unit || "meter";
+  const selKgPerM = selProduct
+    ? (Number(selProduct.kg_per_meter) > 0
+        ? Number(selProduct.kg_per_meter)
+        : (Number(selProduct.gramasi || 0) * Number(selProduct.lebar || 0)) / 1000)
+    : 0;
+  const catchWeight = selKgPerM > 0;
+  const unitOptions = (() => {
+    const opts = [{ value: selBaseUnit, label: selBaseUnit }];
+    if (catchWeight && selBaseUnit !== "kg") opts.push({ value: "kg", label: "kg (berat)" });
+    // pertahankan unit lain bila sudah terlanjur dipilih (mis. yard via konversi variabel)
+    if (newItem.unit && !opts.some((o) => o.value === newItem.unit)) opts.push({ value: newItem.unit, label: newItem.unit });
+    return opts;
+  })();
+  const uomHint = (() => {
+    const qty = Number(newItem.quantity) || 0;
+    const u = (newItem.unit || "").toLowerCase();
+    if (!catchWeight || qty <= 0 || u === selBaseUnit.toLowerCase()) {
+      if (catchWeight && u === selBaseUnit.toLowerCase() && qty > 0)
+        return `≈ ${round2(qty * selKgPerM)} kg (berat estimasi · ${selKgPerM.toFixed(3)} kg/${selBaseUnit})`;
+      return "";
+    }
+    if (u === "kg") return `≈ ${round2(qty / selKgPerM)} ${selBaseUnit} stok (1 kg ≈ ${round2(1 / selKgPerM)} ${selBaseUnit})`;
+    return "";
+  })();
+
   function handleItemQtyChange(e) {
     const qty = parseFloat(e.target.value) || 0;
     setNewItem({ ...newItem, quantity: qty });
@@ -195,10 +223,10 @@ export default function POCreateForm({
               value={newItem.quantity}
               onChange={handleItemQtyChange}
               className="field" />
-            <input data-testid="item-unit-input" type="text" placeholder="Unit"
-              value={newItem.unit}
-              onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}
-              className="field" />
+            <KNSelect data-testid="item-unit-select" value={newItem.unit || selBaseUnit}
+              onValueChange={(v) => setNewItem({ ...newItem, unit: v })}
+              className="field" placeholder="Unit"
+              options={unitOptions} />
             <input data-testid="item-price-input" type="number" placeholder="Harga"
               value={newItem.price}
               onChange={(e) => setNewItem({ ...newItem, price: parseFloat(e.target.value) || 0 })}
@@ -213,6 +241,11 @@ export default function POCreateForm({
               <Plus size={13} />
             </button>
           </div>
+          {uomHint && (
+            <p data-testid="po-uom-hint" className="mt-1.5 text-[10.5px] text-[#0058CC] flex items-center gap-1">
+              <Scale size={11} /> {uomHint}{Number(newItem.price) > 0 ? ` · harga per ${newItem.unit}` : ""}
+            </p>
+          )}
           {priceHint && (
             <p data-testid="po-price-hint" className="mt-1.5 text-[10.5px] text-[#0058CC] flex items-center gap-1">
               <Sparkles size={11} /> {priceHint}

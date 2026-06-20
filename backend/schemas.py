@@ -73,6 +73,7 @@ class ProductPayload(BaseModel):
     harga_pokok: float = 0
     gramasi: float = 0
     lebar: float = 0                      # Sub-fase 1.13 — lebar kain (meter), utk konversi kg (catch-weight)
+    kg_per_meter: float = 0               # Fase 8 — faktor catch-weight eksplisit (kg/m); 0 = turunkan dari gramasi×lebar
     reorder_point: float = 0              # Depth #2b — ambang batas saran beli (0 = nonaktif)
     reorder_qty: float = 0               # Depth #2b — qty saran beli per replenishment (0 = pakai gap)
     image: str = "https://images.unsplash.com/photo-1774679817333-decf0d988dd5?crop=entropy&cs=srgb&fm=jpg&ixlib=rb-4.1.0&q=85"
@@ -527,8 +528,11 @@ class POReceiveItem(BaseModel):
 
 
 class GRRollLine(BaseModel):
-    """P0-4 — satu roll fisik saat Goods Receipt (panjang + dye lot + grade per roll)."""
-    length: float                         # panjang roll (unit task)
+    """P0-4 — satu roll fisik saat Goods Receipt (panjang + dye lot + grade per roll).
+    Fase 8 (catch-weight): `weight` = berat aktual roll (kg, opsional). Untuk PO yang
+    dibeli per kg, isi `weight`; `length` (meter aktual) opsional → diturunkan dari faktor."""
+    length: float = 0                     # panjang roll (base/meter; utk PO per-panjang)
+    weight: float = 0                     # berat roll (kg) — catch-weight aktual (opsional)
     dye_lot: str = ""
     grade: str = "A"
     defects: List[str] = []

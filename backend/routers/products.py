@@ -37,7 +37,7 @@ async def update_product(product_id: str, payload: GenericPatch, request: Reques
     actor = await require_permission(request, "product", "update")
     allowed = ["sku", "name", "category", "variant", "color", "motif", "grade", "supplier",
                "base_unit", "price", "image", "status", "uom_conversions", "harga_pokok", "gramasi", "lebar",
-               "reorder_point", "reorder_qty"]
+               "kg_per_meter", "reorder_point", "reorder_qty"]
     data = {k: v for k, v in payload.data.items() if k in allowed}
     data["updated_at"] = now_iso()
     product = await db.products.find_one_and_update(

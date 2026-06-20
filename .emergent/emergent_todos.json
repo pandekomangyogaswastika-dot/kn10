@@ -1,26 +1,26 @@
 [
   {
-    "content": "Setup + Baseline + P0-A + P1-C (done, verified iter_33 100%)",
+    "content": "Phase 8: Riset + skema + POC (28/28 PASS)",
     "status": "completed"
   },
   {
-    "content": "P0-B: Map all references",
+    "content": "Backend: uom_service helpers, schemas, PO quantity_base, GR catch-weight + weight_kg, on_order base",
     "status": "completed"
   },
   {
-    "content": "P0-B Backend: PO /pay disabled → HTTP 400 redirect to Vendor Bill; seed legacy PO payment removed",
+    "content": "Frontend: PO unit picker + hint; GR catch-weight modal (extracted GRCatchWeightModal); RollsTable weight col; seed GSM/width",
     "status": "completed"
   },
   {
-    "content": "P0-B Frontend: removed 'Hutang Supplier (AP)' nav + PayablesView; PODetailPanel → 'Status Penagihan (Vendor Bill)' + note, no Bayar PO btn",
+    "content": "Gates green (119/0/0, esbuild 0, api_contract 0/0, compliance 0 FAIL)",
     "status": "completed"
   },
   {
-    "content": "P0-B: testing_agent_v3 E2E — iter_34 BE 17/17 + FE 100%",
-    "status": "completed"
+    "content": "testing_agent_v3 E2E (catch-weight PO per-kg → GR weight → rolls; meter regression)",
+    "status": "in_progress"
   },
   {
-    "content": "Update plan.md + SESSION_HANDOFF.md (Session #042)",
-    "status": "completed"
+    "content": "Update plan.md + SESSION_HANDOFF.md",
+    "status": "pending"
   }
 ]

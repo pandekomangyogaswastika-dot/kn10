@@ -6,6 +6,7 @@ import {
 import axios, { API } from "../../services/apiClient";
 import ErrorNotice from "../../components/ErrorNotice";
 import KNSelect from "../../components/KNSelect";
+import GRCatchWeightModal from "./inbound/GRCatchWeightModal";
 import { formatQty } from "../../utils/formatters";
 
 // P0-4 — grade tekstil aktual (A | A+ | B | C | BS)
@@ -55,6 +56,26 @@ export default function InboundScanInterface({ user }) {
   const [escalationReason, setEscalationReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // Fase 8 (Catch-weight) — entri roll saat Goods Receipt (panjang m + berat kg per roll).
+  const [products, setProducts] = useState({});
+  const [showGRModal, setShowGRModal] = useState(false);
+  const [grRolls, setGrRolls] = useState([]);
+  const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+  const kgPerMeter = (p) => {
+    if (!p) return 0;
+    const ex = Number(p?.kg_per_meter) || 0;
+    if (ex > 0) return ex;
+    return (Number(p?.gramasi) || 0) * (Number(p?.lebar) || 0) / 1000;
+  };
+
+  useEffect(() => {
+    axios.get(`${API}/products`).then((r) => {
+      const m = {};
+      (r.data || []).forEach((p) => { m[p.id] = p; });
+      setProducts(m);
+    }).catch(() => { /* opsional */ });
+  }, []);
+
   useEffect(() => { fetchTasks(); }, [filterStatus]);
 
   const fetchTasks = async () => {
@@ -102,14 +123,36 @@ export default function InboundScanInterface({ user }) {
     finally { setSubmitting(false); }
   };
 
-  const handleComplete = async () => {
+  // Fase 8 — buka modal entri roll catch-weight; prefilled 1 roll dari qty diterima.
+  const openComplete = () => {
     if (!selectedTask) return;
-    if (selectedTask.received_qty < selectedTask.expected_qty)
+    if ((selectedTask.received_qty || 0) < selectedTask.expected_qty)
       return alert("Qty belum sesuai! Silakan escalate.");
-    if (!window.confirm("Yakin complete receiving?")) return;
+    const isKg = (selectedTask.unit || "").toLowerCase() === "kg";
+    const kgm = kgPerMeter(products[selectedTask.product_id]);
+    const recv = Number(selectedTask.received_qty) || 0;
+    setGrRolls([{
+      length: isKg ? (kgm > 0 ? round2(recv / kgm) : 0) : recv,
+      weight: isKg ? recv : (kgm > 0 ? round2(recv * kgm) : 0),
+      dye_lot: selectedTask.dye_lot || "",
+      grade: "A",
+    }]);
+    setShowGRModal(true);
+  };
+
+  const submitComplete = async () => {
+    if (!selectedTask) return;
     setSubmitting(true);
     try {
-      await axios.post(`${API}/inbound/tasks/${selectedTask.id}/complete`);
+      const rolls = grRolls.map((r) => ({
+        length: Number(r.length) || 0,
+        weight: Number(r.weight) || 0,
+        dye_lot: r.dye_lot || "",
+        grade: r.grade || "A",
+      }));
+      await axios.post(`${API}/inbound/tasks/${selectedTask.id}/complete`, { rolls });
+      setShowGRModal(false);
+      setGrRolls([]);
       fetchTasks();
       setSelectedTask(null);
     } catch (e) { alert(e.response?.data?.detail || "Gagal complete"); }
@@ -320,7 +363,8 @@ export default function InboundScanInterface({ user }) {
                       <CheckCircle size={13} /> Submit Scan
                     </button>
                     {(selectedTask.received_qty || 0) >= selectedTask.expected_qty && (
-                      <button onClick={handleComplete} disabled={submitting}
+                      <button onClick={openComplete} disabled={submitting}
+                        data-testid={`complete-task-${selectedTask.id}`}
                         className="flex-1 bg-[#007AFF] hover:bg-[#0056B3] text-white rounded-lg px-3 py-2 text-[12px] font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50">
                         <TrendingUp size={13} /> Complete
                       </button>
@@ -385,6 +429,19 @@ export default function InboundScanInterface({ user }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Fase 8 — Goods Receipt: entri roll catch-weight (panjang m + berat kg) */}
+      {showGRModal && selectedTask && (
+        <GRCatchWeightModal
+          task={selectedTask}
+          product={products[selectedTask.product_id]}
+          rolls={grRolls}
+          setRolls={setGrRolls}
+          onSubmit={submitComplete}
+          onClose={() => setShowGRModal(false)}
+          submitting={submitting}
+        />
       )}
     </div>
   );

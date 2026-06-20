@@ -101,7 +101,14 @@ async def build_supply_index(
                 continue
             qty = float(it.get("quantity", it.get("qty", 0)) or 0)
             recv = float(it.get("received_qty", 0) or 0)
-            on_order = max(0.0, qty - recv)
+            remaining = max(0.0, qty - recv)
+            if remaining <= EPS:
+                continue
+            # Fase 8 — on_order dalam BASE unit (meter). PO per-kg punya quantity_base
+            # (meter-ekuivalen); sisa diproporsikan agar tak mencampur kg ke balance meter.
+            qbase = float(it.get("quantity_base", qty) or qty)
+            on_order = (qbase * (remaining / qty)) if qty > 0 else remaining
+            on_order = max(0.0, on_order)
             if on_order <= EPS:
                 continue
             ent, wh = _seg(pid, eid, wid)

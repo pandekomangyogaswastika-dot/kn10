@@ -195,6 +195,9 @@ async def create_purchase_order(payload: PurchaseOrderCreate, request: Request) 
     raw_items = []
 
     from services.supplier_service import resolve_price
+    # Fase 8 (Catch-weight) — siapkan faktor konversi untuk quantity_base (meter-ekuivalen).
+    from services.uom_service import to_base, load_fixed_factors
+    _uom_factors = await load_fixed_factors()
 
     for item_in in payload.items:
         product = products.get(item_in.product_id)
@@ -209,12 +212,26 @@ async def create_purchase_order(payload: PurchaseOrderCreate, request: Request) 
         if price <= 0:
             price = float(product.get("price", 0) or 0)
 
+        # Fase 8 — qty dalam BASE unit (meter) untuk perencanaan stok (on_order/ATP).
+        # Bila dibeli per 'kg', konversi via catch-weight; gagal konversi → fallback = quantity.
+        base_unit = product.get("base_unit", "meter")
+        order_unit = item_in.unit or base_unit
+        if (order_unit or "").strip().lower() == (base_unit or "meter").strip().lower():
+            quantity_base = round(float(item_in.quantity or 0), 2)
+        else:
+            try:
+                quantity_base = to_base(product, float(item_in.quantity or 0), order_unit, _uom_factors)
+            except HTTPException:
+                quantity_base = round(float(item_in.quantity or 0), 2)
+
         raw_items.append({
             "product_id": product["id"],
             "sku": product["sku"],
             "product_name": product["name"],
             "quantity": item_in.quantity,
             "unit": item_in.unit,
+            "base_unit": base_unit,                # Fase 8 — satuan stok produk
+            "quantity_base": quantity_base,        # Fase 8 — qty meter-ekuivalen (planning)
             "price": price,
             "discount_percent": float(item_in.discount_percent or 0),  # P0-1 — diskon item supplier
             "received_qty": 0.0  # Tracking actual received

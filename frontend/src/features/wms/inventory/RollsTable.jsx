@@ -17,6 +17,7 @@ export default function RollsTable({ loading, rolls = [], canPeg = false, onPeg,
               <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-[#6B6B73]">Dye Lot</th>
               <th className="text-center px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-[#6B6B73]">Grade</th>
               <th className="text-right px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-[#6B6B73]">Panjang</th>
+              <th className="text-right px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-[#6B6B73]">Berat</th>
               <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-[#6B6B73]">Status</th>
               <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-[#6B6B73]">Pegging</th>
               <th className="text-right px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-[#6B6B73]">Aksi</th>
@@ -24,11 +25,11 @@ export default function RollsTable({ loading, rolls = [], canPeg = false, onPeg,
           </thead>
           <tbody className="divide-y divide-[#EFF0F2]">
             {loading && (
-              <tr><td colSpan={11} className="text-center py-8 text-[12px] text-[#6B6B73]">Loading...</td></tr>
+              <tr><td colSpan={12} className="text-center py-8 text-[12px] text-[#6B6B73]">Loading...</td></tr>
             )}
             {!loading && rolls.length === 0 && (
               <tr>
-                <td colSpan={11} className="text-center py-10">
+                <td colSpan={12} className="text-center py-10">
                   <Layers size={28} className="mx-auto mb-2 text-gray-300" />
                   <p className="text-[12px] text-[#6B6B73]">Tidak ada roll</p>
                 </td>
@@ -66,6 +67,11 @@ export default function RollsTable({ loading, rolls = [], canPeg = false, onPeg,
                   </td>
                   <td className="px-3 py-2 text-right font-bold tabular-nums">
                     {formatQty(r.length_remaining)} <span className="text-[9px] text-[#8E8E93]">{r.unit}</span>
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums" data-testid={`roll-weight-${r.id}`}>
+                    {Number(r.weight_kg) > 0
+                      ? <>{formatQty(r.weight_kg)} <span className="text-[9px] text-[#8E8E93]">kg</span></>
+                      : <span className="text-[#C7C7CC]">—</span>}
                   </td>
                   <td className="px-3 py-2"><RollStatusBadge status={r.status} /></td>
                   <td className="px-3 py-2">
