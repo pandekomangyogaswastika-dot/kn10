@@ -1,509 +1,380 @@
-#!/usr/bin/env python3
 """
-Backend Testing — Phase 5.5: Faktur Pajak Masukan (Input VAT)
-================================================================
-Comprehensive testing of Input Tax Invoice endpoints:
-- Eligible bills retrieval
-- Create input tax invoice from vendor bill
-- Bill flagging and duplicate prevention
-- NSFP dedupe
-- VAT summary calculation
-- Cancel flow
-- Permission gating
+Backend Testing for Kain Nusantara ERP/WMS
+Tests P0-A (deletion-safe doc numbering) and P1-C (multi-level approval)
 """
-import asyncio
-import os
-import sys
 import requests
-from datetime import datetime, timezone
-from motor.motor_asyncio import AsyncIOMotorClient
-from dotenv import load_dotenv
+import sys
+from typing import Dict, Any, Optional
 
-load_dotenv("/app/backend/.env")
+BASE_URL = "https://handoff-continuation.preview.emergentagent.com/api"
 
-# Use public endpoint for testing
-BASE = "https://hpp-allocator.preview.emergentagent.com"
-API = f"{BASE}/api"
-MONGO_URL = os.environ["MONGO_URL"]
-DB_NAME = os.environ["DB_NAME"]
-ENTITY = "ent_ksc"
+class TestRunner:
+    def __init__(self):
+        self.tests_run = 0
+        self.tests_passed = 0
+        self.tests_failed = 0
+        self.admin_token = None
+        self.manager_token = None
+        self.failures = []
 
-# Test markers
-MARK = "ITTEST"
-PERIOD = datetime.now(timezone.utc).strftime("%Y-%m")  # Current period
-PDATE = f"{PERIOD}-15T00:00:00+00:00"
-NSFP1 = "0100123456789012"  # 16-digit
-NSFP2 = "0100999888777666"
+    def log(self, message: str, level: str = "INFO"):
+        prefix = {"INFO": "ℹ️", "PASS": "✅", "FAIL": "❌", "WARN": "⚠️"}.get(level, "•")
+        print(f"{prefix} {message}")
 
-PASS, FAIL = [], []
-def ok(m): PASS.append(m); print(f"  ✅ [PASS] {m}")
-def bad(m): FAIL.append(m); print(f"  ❌ [FAIL] {m}")
-def info(m): print(f"  ℹ️  {m}")
+    def test(self, name: str, method: str, endpoint: str, expected_status: int,
+             data: Optional[Dict] = None, token: Optional[str] = None,
+             check_response: Optional[callable] = None) -> tuple[bool, Any]:
+        """Run a single API test"""
+        self.tests_run += 1
+        url = f"{BASE_URL}/{endpoint}"
+        headers = {'Content-Type': 'application/json'}
+        if token:
+            headers['Authorization'] = f'Bearer {token}'
 
+        self.log(f"Test #{self.tests_run}: {name}", "INFO")
+        
+        try:
+            if method == 'GET':
+                response = requests.get(url, headers=headers, timeout=10)
+            elif method == 'POST':
+                response = requests.post(url, json=data, headers=headers, timeout=10)
+            elif method == 'PUT':
+                response = requests.put(url, json=data, headers=headers, timeout=10)
+            elif method == 'DELETE':
+                response = requests.delete(url, headers=headers, timeout=10)
+            else:
+                raise ValueError(f"Unsupported method: {method}")
 
-def now_iso():
-    return datetime.now(timezone.utc).isoformat()
+            success = response.status_code == expected_status
+            response_data = {}
+            try:
+                response_data = response.json()
+            except:
+                pass
 
+            if success:
+                # Additional response checks
+                if check_response and not check_response(response_data):
+                    success = False
+                    self.log(f"  Response validation failed", "FAIL")
+                    self.failures.append(f"{name}: Response validation failed")
+                    self.tests_failed += 1
+                else:
+                    self.tests_passed += 1
+                    self.log(f"  PASSED (status: {response.status_code})", "PASS")
+            else:
+                self.log(f"  FAILED - Expected {expected_status}, got {response.status_code}", "FAIL")
+                if response_data:
+                    self.log(f"  Response: {response_data}", "FAIL")
+                self.failures.append(f"{name}: Expected {expected_status}, got {response.status_code}")
+                self.tests_failed += 1
 
-def login(email, password="demo12345"):
-    """Login and return token"""
-    try:
-        r = requests.post(f"{API}/auth/login", json={"email": email, "password": password}, timeout=30)
-        r.raise_for_status()
-        return r.json()["token"]
-    except Exception as e:
-        bad(f"Login failed for {email}: {str(e)}")
+            return success, response_data
+
+        except Exception as e:
+            self.log(f"  FAILED - Error: {str(e)}", "FAIL")
+            self.failures.append(f"{name}: {str(e)}")
+            self.tests_failed += 1
+            return False, {}
+
+    def login(self, email: str, password: str) -> Optional[str]:
+        """Login and return token"""
+        self.log(f"Logging in as {email}...", "INFO")
+        success, data = self.test(
+            f"Login {email}",
+            "POST",
+            "auth/login",
+            200,
+            data={"email": email, "password": password}
+        )
+        if success and 'token' in data:
+            self.log(f"  Login successful, token obtained", "PASS")
+            return data['token']
+        self.log(f"  Login failed", "FAIL")
         return None
 
-
-async def cleanup(db):
-    """Clean up test data"""
-    await db.vendor_bills.delete_many({"mark": MARK})
-    await db.tax_invoices_in.delete_many({"$or": [{"mark": MARK}, {"nsfp_digits": {"$in": [NSFP1, NSFP2]}}]})
-    await db.tax_invoices.delete_many({"mark": MARK})
-
-
-async def seed_vendor_bill(db, suffix, ppn, dpp, status="posted"):
-    """Seed a vendor bill with PPN"""
-    bid = f"vbill_{MARK.lower()}_{suffix}"
-    await db.vendor_bills.delete_many({"id": bid})
-    await db.vendor_bills.insert_one({
-        "id": bid, "mark": MARK, "bill_number": f"VB-{MARK}-{suffix}",
-        "supplier_invoice_no": f"INV-{suffix}", "po_id": f"po_{MARK.lower()}", "po_number": f"PO-{MARK}",
-        "supplier_id": "sup_ittest", "supplier_name": "Supplier Test Input Tax", 
-        "supplier_npwp": "01.234.567.8-901.000",
-        "entity_id": ENTITY, "bill_date": PDATE, "status": status,
-        "dpp": dpp, "ppn_rate": 11.0, "ppn_mode": "excluded", "ppn_amount": ppn,
-        "grand_total": round(dpp + ppn, 2), "input_faktur_status": "none",
-        "created_at": now_iso(), "updated_at": now_iso()
-    })
-    return bid
-
-
-async def seed_output_faktur(db, ppn, dpp):
-    """Seed an output tax invoice (Faktur Pajak Jual)"""
-    fid = f"fkt_{MARK.lower()}_out"
-    await db.tax_invoices.delete_many({"id": fid})
-    await db.tax_invoices.insert_one({
-        "id": fid, "mark": MARK, "number": f"FKT-{MARK}", "status": "normal",
-        "entity_id": ENTITY, "faktur_date": PDATE, "order_id": "so_ittest",
-        "dpp": dpp, "ppn_rate": 11.0, "ppn_amount": ppn, "grand_total": round(dpp + ppn, 2),
-        "created_at": now_iso(), "updated_at": now_iso()
-    })
-    return fid
-
-
-async def test_backend():
-    """Main backend test suite"""
-    client = AsyncIOMotorClient(MONGO_URL)
-    db = client[DB_NAME]
-    
-    # ── Test 1: Login ─────────────────────────────────────────────────────
-    info("TEST 1: Authentication")
-    admin_token = login("admin@kainnusantara.id")
-    if not admin_token:
-        bad("Admin login failed - stopping tests")
-        client.close()
-        return
-    ok("Admin login successful")
-    
-    manager_token = login("manager@kainnusantara.id")
-    if manager_token:
-        ok("Manager login successful")
-    else:
-        bad("Manager login failed")
-    
-    sales_token = login("sales@kainnusantara.id")
-    if sales_token:
-        ok("Sales login successful")
-    else:
-        bad("Sales login failed")
-    
-    # Setup session with admin token
-    s = requests.Session()
-    s.headers.update({"Authorization": f"Bearer {admin_token}"})
-    
-    # ── Test 2: Cleanup and seed data ─────────────────────────────────────
-    info("TEST 2: Setup test data")
-    await cleanup(db)
-    bill1 = await seed_vendor_bill(db, "1", ppn=110000.0, dpp=1000000.0, status="posted")
-    bill2 = await seed_vendor_bill(db, "2", ppn=55000.0, dpp=500000.0, status="posted")
-    bill3 = await seed_vendor_bill(db, "3", ppn=33000.0, dpp=300000.0, status="draft")  # Not eligible
-    await seed_output_faktur(db, ppn=200000.0, dpp=1818181.0)
-    ok("Test data seeded successfully")
-    
-    # ── Test 3: Eligible bills endpoint ───────────────────────────────────
-    info("TEST 3: GET /api/input-tax-invoices/eligible-bills")
-    try:
-        r = s.get(f"{API}/input-tax-invoices/eligible-bills", params={"entity_id": ENTITY}, timeout=30)
-        if r.status_code == 200:
-            ok("Eligible bills endpoint returns 200")
-            bills = r.json()
-            if isinstance(bills, list):
-                ok("Response is a list (bare array, no envelope)")
-                if any(b["vendor_bill_id"] == bill1 for b in bills):
-                    ok("Posted bill with PPN appears in eligible bills")
-                else:
-                    bad("Posted bill with PPN NOT in eligible bills")
-                if any(b["vendor_bill_id"] == bill2 for b in bills):
-                    ok("Second posted bill with PPN appears in eligible bills")
-                else:
-                    bad("Second posted bill NOT in eligible bills")
-                if any(b["vendor_bill_id"] == bill3 for b in bills):
-                    bad("Draft bill should NOT appear in eligible bills")
-                else:
-                    ok("Draft bill correctly excluded from eligible bills")
-            else:
-                bad(f"Response is not a list: {type(bills)}")
-        else:
-            bad(f"Eligible bills endpoint failed: {r.status_code} {r.text[:200]}")
-    except Exception as e:
-        bad(f"Eligible bills test error: {str(e)}")
-    
-    # ── Test 4: Create input tax invoice ──────────────────────────────────
-    info("TEST 4: POST /api/input-tax-invoices (create)")
-    fpm_id = None
-    try:
-        r = s.post(f"{API}/input-tax-invoices", 
-                   json={"vendor_bill_id": bill1, "nsfp": NSFP1, "faktur_date": PDATE}, 
-                   timeout=30)
-        if r.status_code == 200:
-            ok("Create input tax invoice returns 200")
-            v = r.json()
-            if isinstance(v, dict):
-                ok("Response is an object (bare object, no envelope)")
-                fpm_id = v.get("id")
-                
-                # Check all required fields
-                checks = [
-                    (v.get("status") == "recorded", "status is 'recorded'"),
-                    (abs(float(v.get("ppn_amount", 0)) - 110000) < 1, "ppn_amount copied correctly (110,000)"),
-                    (abs(float(v.get("dpp", 0)) - 1000000) < 1, "dpp copied correctly (1,000,000)"),
-                    (v.get("supplier_name") == "Supplier Test Input Tax", "supplier_name copied"),
-                    (v.get("supplier_npwp") == "01.234.567.8-901.000", "supplier_npwp copied"),
-                    (v.get("period") == PERIOD, f"period is {PERIOD}"),
-                    (v.get("nsfp_digits") == NSFP1, "nsfp_digits normalized"),
-                    (v.get("number", "").startswith("FPM-"), "number starts with FPM-"),
-                    (v.get("vendor_bill_id") == bill1, "vendor_bill_id linked"),
-                    (v.get("bill_number") == f"VB-{MARK}-1", "bill_number copied"),
-                ]
-                for cond, label in checks:
-                    ok(label) if cond else bad(f"{label} FAILED")
-            else:
-                bad(f"Response is not an object: {type(v)}")
-        else:
-            bad(f"Create failed: {r.status_code} {r.text[:250]}")
-    except Exception as e:
-        bad(f"Create test error: {str(e)}")
-    
-    # ── Test 5: Bill flagging ─────────────────────────────────────────────
-    info("TEST 5: Vendor bill flagging")
-    try:
-        b = await db.vendor_bills.find_one({"id": bill1}, {"_id": 0})
-        if b:
-            checks = [
-                (b.get("input_faktur_status") == "recorded", "input_faktur_status is 'recorded'"),
-                (b.get("input_faktur_id") == fpm_id, "input_faktur_id set correctly"),
-                (b.get("input_faktur_number", "").startswith("FPM-"), "input_faktur_number set"),
-                (b.get("input_faktur_nsfp") == NSFP1, "input_faktur_nsfp set"),
-            ]
-            for cond, label in checks:
-                ok(label) if cond else bad(f"{label} FAILED")
-        else:
-            bad("Vendor bill not found in DB")
-    except Exception as e:
-        bad(f"Bill flagging test error: {str(e)}")
-    
-    # ── Test 6: Bill no longer eligible ───────────────────────────────────
-    info("TEST 6: Flagged bill not in eligible list")
-    try:
-        r = s.get(f"{API}/input-tax-invoices/eligible-bills", params={"entity_id": ENTITY}, timeout=30)
-        if r.status_code == 200:
-            bills = r.json()
-            if not any(b["vendor_bill_id"] == bill1 for b in bills):
-                ok("Flagged bill removed from eligible bills")
-            else:
-                bad("Flagged bill still appears in eligible bills")
-        else:
-            bad(f"Eligible bills check failed: {r.status_code}")
-    except Exception as e:
-        bad(f"Eligible bills check error: {str(e)}")
-    
-    # ── Test 7: Duplicate bill prevention ─────────────────────────────────
-    info("TEST 7: Duplicate bill prevention (409)")
-    try:
-        r = s.post(f"{API}/input-tax-invoices", 
-                   json={"vendor_bill_id": bill1, "nsfp": "0100111122223333"}, 
-                   timeout=30)
-        if r.status_code == 409:
-            ok("Duplicate bill creation prevented (409)")
-        else:
-            bad(f"Duplicate bill should return 409, got {r.status_code}")
-    except Exception as e:
-        bad(f"Duplicate bill test error: {str(e)}")
-    
-    # ── Test 8: NSFP dedupe ───────────────────────────────────────────────
-    info("TEST 8: NSFP dedupe (same NSFP on different bill)")
-    try:
-        r = s.post(f"{API}/input-tax-invoices", 
-                   json={"vendor_bill_id": bill2, "nsfp": NSFP1}, 
-                   timeout=30)
-        if r.status_code == 409:
-            ok("NSFP dedupe working (409 for duplicate NSFP)")
-        else:
-            bad(f"NSFP dedupe should return 409, got {r.status_code} {r.text[:150]}")
-    except Exception as e:
-        bad(f"NSFP dedupe test error: {str(e)}")
-    
-    # ── Test 9: Create second input tax invoice with different NSFP ───────
-    info("TEST 9: Create second input tax invoice (different NSFP)")
-    fpm_id2 = None
-    try:
-        r = s.post(f"{API}/input-tax-invoices", 
-                   json={"vendor_bill_id": bill2, "nsfp": NSFP2, "faktur_date": PDATE}, 
-                   timeout=30)
-        if r.status_code == 200:
-            ok("Second input tax invoice created successfully")
-            v = r.json()
-            fpm_id2 = v.get("id")
-            if abs(float(v.get("ppn_amount", 0)) - 55000) < 1:
-                ok("Second invoice ppn_amount correct (55,000)")
-            else:
-                bad(f"Second invoice ppn_amount wrong: {v.get('ppn_amount')}")
-        else:
-            bad(f"Second invoice creation failed: {r.status_code} {r.text[:200]}")
-    except Exception as e:
-        bad(f"Second invoice test error: {str(e)}")
-    
-    # ── Test 10: List input tax invoices ──────────────────────────────────
-    info("TEST 10: GET /api/input-tax-invoices (list)")
-    try:
-        r = s.get(f"{API}/input-tax-invoices", params={"entity_id": ENTITY}, timeout=30)
-        if r.status_code == 200:
-            ok("List endpoint returns 200")
-            invoices = r.json()
-            if isinstance(invoices, list):
-                ok("Response is a list (bare array)")
-                test_invoices = [inv for inv in invoices if inv.get("mark") == MARK]
-                if len(test_invoices) >= 2:
-                    ok(f"Found {len(test_invoices)} test invoices")
-                else:
-                    bad(f"Expected at least 2 test invoices, found {len(test_invoices)}")
-            else:
-                bad(f"Response is not a list: {type(invoices)}")
-        else:
-            bad(f"List endpoint failed: {r.status_code} {r.text[:200]}")
-    except Exception as e:
-        bad(f"List test error: {str(e)}")
-    
-    # ── Test 11: Get single input tax invoice ─────────────────────────────
-    info("TEST 11: GET /api/input-tax-invoices/{id} (detail)")
-    if fpm_id:
-        try:
-            r = s.get(f"{API}/input-tax-invoices/{fpm_id}", timeout=30)
-            if r.status_code == 200:
-                ok("Detail endpoint returns 200")
-                v = r.json()
-                if isinstance(v, dict):
-                    ok("Response is an object (bare object)")
-                    if v.get("id") == fpm_id:
-                        ok("Correct invoice returned")
-                    else:
-                        bad(f"Wrong invoice returned: {v.get('id')}")
-                else:
-                    bad(f"Response is not an object: {type(v)}")
-            else:
-                bad(f"Detail endpoint failed: {r.status_code} {r.text[:200]}")
-        except Exception as e:
-            bad(f"Detail test error: {str(e)}")
-    else:
-        bad("No fpm_id to test detail endpoint")
-    
-    # ── Test 12: VAT summary ──────────────────────────────────────────────
-    info("TEST 12: GET /api/tax/vat-summary")
-    try:
-        r = s.get(f"{API}/tax/vat-summary", params={"period": PERIOD, "entity_id": ENTITY}, timeout=30)
-        if r.status_code == 200:
-            ok("VAT summary endpoint returns 200")
-            sm = r.json()
-            if isinstance(sm, dict):
-                ok("Response is an object (bare object)")
-                
-                # Check structure
-                required_keys = ["period", "keluaran", "masukan", "net_ppn", "position", "position_label", "masukan_by_supplier"]
-                for key in required_keys:
-                    if key in sm:
-                        ok(f"Has '{key}' field")
-                    else:
-                        bad(f"Missing '{key}' field")
-                
-                # Check calculations
-                mas_ppn = float(sm.get("masukan", {}).get("ppn", 0))
-                kel_ppn = float(sm.get("keluaran", {}).get("ppn", 0))
-                net = float(sm.get("net_ppn", 0))
-                
-                # Masukan should be 110,000 + 55,000 = 165,000
-                if abs(mas_ppn - 165000) < 1:
-                    ok("Masukan PPN correct (165,000)")
-                else:
-                    bad(f"Masukan PPN wrong: {mas_ppn} (expected 165,000)")
-                
-                # Keluaran should be 200,000 (from seed)
-                if abs(kel_ppn - 200000) < 1:
-                    ok("Keluaran PPN correct (200,000)")
-                else:
-                    bad(f"Keluaran PPN wrong: {kel_ppn} (expected 200,000)")
-                
-                # Net should be 200,000 - 165,000 = 35,000 (kurang bayar)
-                if abs(net - 35000) < 1:
-                    ok("Net PPN correct (35,000)")
-                else:
-                    bad(f"Net PPN wrong: {net} (expected 35,000)")
-                
-                if sm.get("position") == "kurang_bayar":
-                    ok("Position is 'kurang_bayar' (correct)")
-                else:
-                    bad(f"Position wrong: {sm.get('position')} (expected kurang_bayar)")
-                
-                # Check masukan_by_supplier
-                by_supplier = sm.get("masukan_by_supplier", [])
-                if isinstance(by_supplier, list):
-                    ok("masukan_by_supplier is a list")
-                    if len(by_supplier) > 0:
-                        ok(f"Found {len(by_supplier)} supplier(s) in masukan breakdown")
-                    else:
-                        bad("masukan_by_supplier is empty")
-                else:
-                    bad(f"masukan_by_supplier is not a list: {type(by_supplier)}")
-            else:
-                bad(f"Response is not an object: {type(sm)}")
-        else:
-            bad(f"VAT summary failed: {r.status_code} {r.text[:200]}")
-    except Exception as e:
-        bad(f"VAT summary test error: {str(e)}")
-    
-    # ── Test 13: Cancel input tax invoice ─────────────────────────────────
-    info("TEST 13: POST /api/input-tax-invoices/{id}/cancel")
-    if fpm_id:
-        try:
-            r = s.post(f"{API}/input-tax-invoices/{fpm_id}/cancel", 
-                       json={"reason": "Test cancellation"}, 
-                       timeout=30)
-            if r.status_code == 200:
-                ok("Cancel endpoint returns 200")
-                v = r.json()
-                if v.get("status") == "cancelled":
-                    ok("Status changed to 'cancelled'")
-                else:
-                    bad(f"Status not cancelled: {v.get('status')}")
-                if v.get("cancel_reason") == "Test cancellation":
-                    ok("Cancel reason saved")
-                else:
-                    bad("Cancel reason not saved")
-            else:
-                bad(f"Cancel failed: {r.status_code} {r.text[:200]}")
-        except Exception as e:
-            bad(f"Cancel test error: {str(e)}")
-    else:
-        bad("No fpm_id to test cancel endpoint")
-    
-    # ── Test 14: Bill eligible again after cancel ─────────────────────────
-    info("TEST 14: Bill eligible again after cancel")
-    try:
-        r = s.get(f"{API}/input-tax-invoices/eligible-bills", params={"entity_id": ENTITY}, timeout=30)
-        if r.status_code == 200:
-            bills = r.json()
-            if any(b["vendor_bill_id"] == bill1 for b in bills):
-                ok("Cancelled bill back in eligible bills")
-            else:
-                bad("Cancelled bill NOT back in eligible bills")
-        else:
-            bad(f"Eligible bills check failed: {r.status_code}")
-    except Exception as e:
-        bad(f"Eligible bills check error: {str(e)}")
-    
-    # ── Test 15: NSFP reusable after cancel ───────────────────────────────
-    info("TEST 15: NSFP reusable after cancel")
-    try:
-        r = s.post(f"{API}/input-tax-invoices", 
-                   json={"vendor_bill_id": bill1, "nsfp": NSFP1, "faktur_date": PDATE}, 
-                   timeout=30)
-        if r.status_code == 200:
-            ok("NSFP reusable after cancel (200)")
-        else:
-            bad(f"NSFP reuse failed: {r.status_code} {r.text[:200]}")
-    except Exception as e:
-        bad(f"NSFP reuse test error: {str(e)}")
-    
-    # ── Test 16: Permission gating (sales view-only) ──────────────────────
-    info("TEST 16: Permission gating (sales view-only)")
-    if sales_token:
-        s_sales = requests.Session()
-        s_sales.headers.update({"Authorization": f"Bearer {sales_token}"})
+    def print_summary(self):
+        """Print test summary"""
+        print("\n" + "="*70)
+        print("TEST SUMMARY")
+        print("="*70)
+        print(f"Total Tests: {self.tests_run}")
+        print(f"✅ Passed: {self.tests_passed}")
+        print(f"❌ Failed: {self.tests_failed}")
+        print(f"Success Rate: {(self.tests_passed/self.tests_run*100) if self.tests_run > 0 else 0:.1f}%")
         
-        # Sales should be able to view
-        try:
-            r = s_sales.get(f"{API}/input-tax-invoices", params={"entity_id": ENTITY}, timeout=30)
-            if r.status_code == 200:
-                ok("Sales can view input tax invoices")
-            else:
-                bad(f"Sales view failed: {r.status_code}")
-        except Exception as e:
-            bad(f"Sales view test error: {str(e)}")
+        if self.failures:
+            print("\n" + "="*70)
+            print("FAILURES:")
+            print("="*70)
+            for i, failure in enumerate(self.failures, 1):
+                print(f"{i}. {failure}")
         
-        # Sales should NOT be able to create
-        try:
-            r = s_sales.post(f"{API}/input-tax-invoices", 
-                            json={"vendor_bill_id": bill2, "nsfp": "0100555566667777"}, 
-                            timeout=30)
-            if r.status_code in [403, 401]:
-                ok("Sales cannot create input tax invoice (403/401)")
-            else:
-                bad(f"Sales create should be forbidden, got {r.status_code}")
-        except Exception as e:
-            bad(f"Sales create test error: {str(e)}")
-    else:
-        bad("No sales token to test permissions")
-    
-    # ── Test 17: Manager permissions ──────────────────────────────────────
-    info("TEST 17: Manager can create and cancel")
-    if manager_token:
-        s_mgr = requests.Session()
-        s_mgr.headers.update({"Authorization": f"Bearer {manager_token}"})
-        
-        # Manager should be able to view
-        try:
-            r = s_mgr.get(f"{API}/input-tax-invoices", params={"entity_id": ENTITY}, timeout=30)
-            if r.status_code == 200:
-                ok("Manager can view input tax invoices")
-            else:
-                bad(f"Manager view failed: {r.status_code}")
-        except Exception as e:
-            bad(f"Manager view test error: {str(e)}")
-    else:
-        bad("No manager token to test permissions")
-    
-    # ── Cleanup ───────────────────────────────────────────────────────────
-    info("Cleaning up test data...")
-    await cleanup(db)
-    ok("Test data cleaned up")
-    
-    client.close()
+        print("="*70)
 
 
-def print_summary():
-    """Print test summary"""
-    print("\n" + "=" * 70)
-    print(f"  BACKEND TEST SUMMARY: {len(PASS)} PASS | {len(FAIL)} FAIL")
-    print("=" * 70)
-    if FAIL:
-        print("\n❌ FAILED TESTS:")
-        for f in FAIL:
-            print(f"  - {f}")
+def main():
+    runner = TestRunner()
+    
+    print("="*70)
+    print("KAIN NUSANTARA ERP/WMS - BACKEND TESTING")
+    print("Testing P0-A (Deletion-safe numbering) & P1-C (Multi-level approval)")
+    print("="*70)
     print()
+
+    # ========== AUTHENTICATION ==========
+    print("\n" + "="*70)
+    print("PHASE 1: AUTHENTICATION")
+    print("="*70)
+    
+    runner.admin_token = runner.login("admin@kainnusantara.id", "demo12345")
+    if not runner.admin_token:
+        print("❌ CRITICAL: Admin login failed. Cannot continue.")
+        return 1
+    
+    runner.manager_token = runner.login("manager@kainnusantara.id", "demo12345")
+    if not runner.manager_token:
+        print("❌ CRITICAL: Manager login failed. Cannot continue.")
+        return 1
+
+    # ========== P0-A: DELETION-SAFE DOCUMENT NUMBERING ==========
+    print("\n" + "="*70)
+    print("PHASE 2: P0-A - DELETION-SAFE DOCUMENT NUMBERING")
+    print("="*70)
+    
+    # Get existing POs to check current max number
+    runner.log("Checking existing PO numbers...", "INFO")
+    success, pos = runner.test(
+        "List existing POs",
+        "GET",
+        "purchase-orders",
+        200,
+        token=runner.admin_token
+    )
+    
+    if success:
+        po_numbers = [po.get('po_number', '') for po in pos if po.get('po_number', '').startswith('PO-')]
+        runner.log(f"  Found {len(po_numbers)} POs", "INFO")
+        if po_numbers:
+            max_po = max(po_numbers)
+            runner.log(f"  Current max PO number: {max_po}", "INFO")
+    
+    # Create new PO - should get PO-00012 (after PO-00011)
+    runner.log("Creating new PO to test max-based numbering...", "INFO")
+    new_po_data = {
+        "warehouse_id": "wh_jakarta",
+        "supplier_name": "Test Supplier",
+        "supplier_contact": "Test Contact",
+        "items": [
+            {
+                "product_id": "prod_batik_mega",
+                "quantity": 10.0,
+                "unit": "meter",
+                "price": 185000
+            }
+        ],
+        "expected_delivery_date": "2026-07-01",
+        "notes": "Test PO for deletion-safe numbering",
+        "created_by": "Admin"
+    }
+    
+    success, new_po = runner.test(
+        "Create new PO (test max-based numbering)",
+        "POST",
+        "purchase-orders",
+        200,
+        data=new_po_data,
+        token=runner.admin_token,
+        check_response=lambda r: r.get('po_number') == 'PO-00012'
+    )
+    
+    if success:
+        runner.log(f"  New PO number: {new_po.get('po_number')}", "PASS")
+        if new_po.get('po_number') == 'PO-00012':
+            runner.log(f"  ✓ Correct! Max-based numbering working (expected PO-00012)", "PASS")
+        else:
+            runner.log(f"  ✗ WRONG! Expected PO-00012, got {new_po.get('po_number')}", "FAIL")
+    
+    # Test SO numbering
+    runner.log("Checking SO numbering...", "INFO")
+    success, sos = runner.test(
+        "List existing SOs",
+        "GET",
+        "sales-orders",
+        200,
+        token=runner.admin_token
+    )
+    
+    if success:
+        so_numbers = [so.get('number', '') for so in sos if so.get('number', '').startswith('SO-')]
+        if so_numbers:
+            max_so = max(so_numbers)
+            runner.log(f"  Current max SO number: {max_so}", "INFO")
+
+    # ========== P1-C: MULTI-LEVEL APPROVAL BACKEND ==========
+    print("\n" + "="*70)
+    print("PHASE 3: P1-C - MULTI-LEVEL APPROVAL (BACKEND)")
+    print("="*70)
+    
+    # Test PO-00010 (2 levels, both pending)
+    runner.log("Testing PO-00010 (2-level approval, both pending)...", "INFO")
+    
+    # (a) Manager approves PO-00010 -> should stay waiting_approval, move to L2
+    runner.log("(a) Manager approves PO-00010 (L1)...", "INFO")
+    success, po_010_after_l1 = runner.test(
+        "Manager approves PO-00010 L1",
+        "POST",
+        "purchase-orders/po_010/approve",
+        200,
+        token=runner.manager_token,
+        check_response=lambda r: (
+            r.get('status') == 'waiting_approval' and
+            r.get('approval_level_current') == 2 and
+            r.get('required_approval_role') == 'admin'
+        )
+    )
+    
+    if success:
+        runner.log(f"  Status: {po_010_after_l1.get('status')}", "INFO")
+        runner.log(f"  Current level: {po_010_after_l1.get('approval_level_current')}", "INFO")
+        runner.log(f"  Required role: {po_010_after_l1.get('required_approval_role')}", "INFO")
+        chain = po_010_after_l1.get('approval_chain', [])
+        if len(chain) >= 2:
+            runner.log(f"  L1 status: {chain[0].get('status')}", "INFO")
+            runner.log(f"  L2 status: {chain[1].get('status')}", "INFO")
+    
+    # (b) Manager tries to approve PO-00010 again -> should get 403
+    runner.log("(b) Manager tries to approve PO-00010 again (should fail - needs admin)...", "INFO")
+    runner.test(
+        "Manager tries PO-00010 L2 (should fail)",
+        "POST",
+        "purchase-orders/po_010/approve",
+        403,
+        token=runner.manager_token
+    )
+    
+    # (c) Admin approves PO-00010 -> should become 'pending', fully approved, inbound task created
+    runner.log("(c) Admin approves PO-00010 (L2 - final)...", "INFO")
+    success, po_010_final = runner.test(
+        "Admin approves PO-00010 L2 (final)",
+        "POST",
+        "purchase-orders/po_010/approve",
+        200,
+        token=runner.admin_token,
+        check_response=lambda r: (
+            r.get('status') == 'pending' and
+            r.get('approval_status') == 'approved'
+        )
+    )
+    
+    if success:
+        runner.log(f"  Status: {po_010_final.get('status')}", "PASS")
+        runner.log(f"  Approval status: {po_010_final.get('approval_status')}", "PASS")
+        chain = po_010_final.get('approval_chain', [])
+        if len(chain) >= 2:
+            runner.log(f"  L1 status: {chain[0].get('status')} (by {chain[0].get('approved_by')})", "INFO")
+            runner.log(f"  L2 status: {chain[1].get('status')} (by {chain[1].get('approved_by')})", "INFO")
+        
+        # Check if inbound task was created
+        runner.log("  Checking if inbound task was created...", "INFO")
+        success_task, tasks = runner.test(
+            "Get inbound tasks for PO-00010",
+            "GET",
+            "inbound/tasks?po_id=po_010",
+            200,
+            token=runner.admin_token
+        )
+        if success_task:
+            runner.log(f"  Inbound tasks created: {len(tasks)}", "PASS" if len(tasks) > 0 else "FAIL")
+    
+    # Test PO-00011 (L1 approved by manager, L2 admin pending)
+    runner.log("\nTesting PO-00011 (L1 approved, L2 pending)...", "INFO")
+    
+    # Manager tries to approve PO-00011 -> should get 403 (needs admin)
+    runner.log("Manager tries to approve PO-00011 (should fail - needs admin)...", "INFO")
+    runner.test(
+        "Manager tries PO-00011 (should fail)",
+        "POST",
+        "purchase-orders/po_011/approve",
+        403,
+        token=runner.manager_token
+    )
+    
+    # Admin approves PO-00011 -> should become fully approved
+    runner.log("Admin approves PO-00011 (L2 - final)...", "INFO")
+    success, po_011_final = runner.test(
+        "Admin approves PO-00011 L2 (final)",
+        "POST",
+        "purchase-orders/po_011/approve",
+        200,
+        token=runner.admin_token,
+        check_response=lambda r: (
+            r.get('status') == 'pending' and
+            r.get('approval_status') == 'approved'
+        )
+    )
+    
+    if success:
+        runner.log(f"  Status: {po_011_final.get('status')}", "PASS")
+        runner.log(f"  Approval status: {po_011_final.get('approval_status')}", "PASS")
+
+    # ========== P1-C: SoD (Segregation of Duties) ==========
+    print("\n" + "="*70)
+    print("PHASE 4: P1-C - SEGREGATION OF DUTIES (SoD)")
+    print("="*70)
+    
+    runner.log("Testing SoD: creator cannot approve their own PO...", "INFO")
+    runner.log("Note: Seed POs created by 'Admin' without created_by_id, so SoD won't block.", "WARN")
+    runner.log("Creating a new PO with created_by_id to test SoD...", "INFO")
+    
+    # Create PO that requires approval
+    sod_po_data = {
+        "warehouse_id": "wh_jakarta",
+        "supplier_name": "Test Supplier SoD",
+        "supplier_contact": "Test Contact",
+        "items": [
+            {
+                "product_id": "prod_batik_mega",
+                "quantity": 1000.0,  # Large qty to trigger approval
+                "unit": "meter",
+                "price": 185000
+            }
+        ],
+        "expected_delivery_date": "2026-07-01",
+        "notes": "Test PO for SoD",
+        "created_by": "Dewi Rahayu"  # Manager creates it
+    }
+    
+    success, sod_po = runner.test(
+        "Manager creates PO (should need approval)",
+        "POST",
+        "purchase-orders",
+        200,
+        data=sod_po_data,
+        token=runner.manager_token,
+        check_response=lambda r: r.get('approval_required') == True
+    )
+    
+    if success and sod_po.get('approval_required'):
+        po_id = sod_po.get('id')
+        runner.log(f"  Created PO {sod_po.get('po_number')} (id: {po_id})", "INFO")
+        runner.log(f"  Created by: {sod_po.get('created_by')} (id: {sod_po.get('created_by_id')})", "INFO")
+        
+        # Manager tries to approve their own PO -> should get 403 (SoD)
+        runner.log("Manager tries to approve their own PO (should fail - SoD)...", "INFO")
+        runner.test(
+            "Manager approves own PO (should fail - SoD)",
+            "POST",
+            f"purchase-orders/{po_id}/approve",
+            403,
+            token=runner.manager_token
+        )
+
+    # ========== PRINT SUMMARY ==========
+    runner.print_summary()
+    
+    return 0 if runner.tests_failed == 0 else 1
 
 
 if __name__ == "__main__":
-    asyncio.run(test_backend())
-    print_summary()
-    sys.exit(0 if not FAIL else 1)
+    sys.exit(main())

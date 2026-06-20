@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 from fastapi import HTTPException
 from db import db
-from core_utils import new_id, now_iso, safe_doc
+from core_utils import new_id, now_iso, safe_doc, next_doc_number
 
 ELIGIBLE_ORDER_STATUSES = {"confirmed", "partially_picked", "picked",
                           "partially_shipped", "shipped", "done"}
@@ -26,8 +26,7 @@ def _money(v: Any) -> str:
 
 
 async def _next_faktur_no() -> str:
-    count = await db.tax_invoices.count_documents({})
-    return f"FKT-{count + 1:05d}"
+    return await next_doc_number("tax_invoices", "number", "FKT-")
 
 
 def _entity_is_pkp(entity: Dict[str, Any], order: Dict[str, Any]) -> bool:

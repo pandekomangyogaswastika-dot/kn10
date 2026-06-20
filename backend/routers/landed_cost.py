@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pymongo import ReturnDocument
 from db import db
 from dependencies import require_permission, current_user, audit
-from core_utils import new_id, now_iso, safe_doc, DEFAULT_ENTITY_ID, timeline_entry
+from core_utils import new_id, now_iso, safe_doc, DEFAULT_ENTITY_ID, timeline_entry, next_doc_number
 from schemas import LandedCostCreate, LandedCostPaymentCreate, LandedCostDecision
 from services.config_service import role_satisfies
 from services.landed_cost_service import (
@@ -303,9 +303,8 @@ async def pay_landed_cost(voucher_id: str, payload: LandedCostPaymentCreate, req
         raise HTTPException(status_code=400,
                             detail=f"Pembayaran ({amount}) melebihi sisa ({fin['outstanding']}).")
     cash_entity = "all" if payload.cash_type == "kas_besar" else (payload.entity_id or v.get("entity_id") or DEFAULT_ENTITY_ID)
-    cash_count = await db.cash_transactions.count_documents({})
     cash_doc = {
-        "id": new_id("cash"), "number": f"CASH-{cash_count + 1:05d}",
+        "id": new_id("cash"), "number": await next_doc_number("cash_transactions", "number", "CASH-"),
         "cash_type": payload.cash_type, "direction": "out", "amount": amount,
         "category": "pembelian",
         "description": f"Pembayaran {v.get('voucher_number')} — landed cost {v.get('provider_name','')} ({payload.method})",

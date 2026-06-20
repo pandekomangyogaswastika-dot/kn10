@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import axios, { API } from "../../services/apiClient";
-import { BadgePercent, CheckCircle, XCircle, RefreshCw, ClipboardList, ChevronRight, ChevronDown, AlertCircle } from "lucide-react";
+import { BadgePercent, CheckCircle, XCircle, RefreshCw, ClipboardList, ChevronRight, ChevronDown, AlertCircle, Clock, Lock, Layers } from "lucide-react";
 import { formatCurrency } from "../../utils/formatters";
 import POTimeline from "../admin/po/POTimeline";
 import PODeviationBanner from "../admin/po/PODeviationBanner";
@@ -8,9 +8,13 @@ import ConfirmModal from "../../components/ConfirmModal";
 import ErrorNotice from "../../components/ErrorNotice";
 
 /**
- * PurchaseApprovalView (Fase 3 — Approval Pembelian).
- * Antrian approval Purchase Order dengan drill-down: alasan approval (deviasi harga /
- * batas nilai), rincian item, dan riwayat/timeline — agar approver memutuskan dengan konteks.
+ * PurchaseApprovalView (Fase 3 + Fase 7.1 — Approval Pembelian BERJENJANG).
+ * Antrian approval Purchase Order dengan:
+ *  - Rantai approval multi-level (approval_chain): badge per tingkat (L1 Manager,
+ *    L2 Direksi, …) + status tiap tingkat + progres "Tingkat X dari Y".
+ *  - Tombol Setujui AKTIF hanya bila role user memenuhi tingkat PENDING saat ini
+ *    (role_satisfies) & bukan pembuat PO (SoD). Bila tidak, tampil info "Menunggu …".
+ *  - Drill-down: alasan approval, rincian item, dan timeline.
  * Endpoint: /purchase-orders/{id}/approve | /reject.
  */
 const TABS = [
@@ -18,6 +22,42 @@ const TABS = [
   { key: "approved", label: "Disetujui" },
   { key: "rejected", label: "Ditolak" },
 ];
+
+// Hirarki role flat (mirror backend services/config_service.role_satisfies):
+// admin(3) > manager(2) > sales/warehouse(1). required '' / null = tanpa approval.
+const ROLE_RANK = { sales: 1, warehouse: 1, manager: 2, admin: 3 };
+const ROLE_NEED = { "": 0, manager: 2, admin: 3 };
+
+function roleSatisfies(actorRole, requiredRole) {
+  const need = ROLE_NEED[requiredRole || ""] ?? 2;
+  return (ROLE_RANK[actorRole] || 0) >= need;
+}
+
+const ROLE_LABEL = { manager: "Manager", admin: "Direksi", sales: "Sales", warehouse: "Warehouse" };
+function roleLabel(role) {
+  return ROLE_LABEL[role] || (role ? role.toUpperCase() : "—");
+}
+
+/**
+ * Bentuk rantai approval dari PO. Bila PO lama tidak punya `approval_chain`,
+ * sintesis 1 tingkat dari `required_approval_role`/`approval_status` (backward-compatible).
+ */
+function getChain(po) {
+  if (Array.isArray(po.approval_chain) && po.approval_chain.length) return po.approval_chain;
+  const status = po.approval_status === "approved" ? "approved" : (po.status === "rejected" ? "rejected" : "pending");
+  return [{
+    level: 1,
+    required_role: po.required_approval_role || "manager",
+    label: "Approval",
+    status,
+    approved_by: po.approved_by || "",
+    approved_at: po.approved_at || "",
+  }];
+}
+
+function pendingLevelOf(chain) {
+  return (chain || []).find((l) => l.status !== "approved" && l.status !== "rejected") || null;
+}
 
 function matchTab(po, tab) {
   if (tab === "waiting") return po.status === "waiting_approval";
@@ -36,7 +76,24 @@ export default function PurchaseApprovalView({ currentUser, selectedEntity }) {
   const [expandedId, setExpandedId] = useState(null);
   const [rejectTarget, setRejectTarget] = useState(null);
 
-  const canApprove = ["admin", "manager"].includes(currentUser?.role);
+  const role = currentUser?.role;
+  // Apakah user boleh menyetujui tingkat PENDING saat ini pada PO ini?
+  function canApproveNow(po) {
+    if (po.status !== "waiting_approval") return false;
+    const chain = getChain(po);
+    const pending = pendingLevelOf(chain);
+    if (!pending) return false;
+    if (!roleSatisfies(role, pending.required_role)) return false;
+    // SoD — pembuat tidak boleh menyetujui PO sendiri.
+    if (po.created_by_id && currentUser?.id && po.created_by_id === currentUser.id) return false;
+    return true;
+  }
+  // Apakah user secara role bisa menolak (role memenuhi tingkat pending)?
+  function canRejectNow(po) {
+    if (po.status !== "waiting_approval") return false;
+    const pending = pendingLevelOf(getChain(po));
+    return !!pending && roleSatisfies(role, pending.required_role);
+  }
 
   useEffect(() => { loadPOs(); }, [selectedEntity]); // eslint-disable-line
 
@@ -57,8 +114,14 @@ export default function PurchaseApprovalView({ currentUser, selectedEntity }) {
   async function handleApprove(po) {
     setBusyId(po.id);
     try {
-      await axios.post(`${API}/purchase-orders/${po.id}/approve`);
-      setNotice(`PO ${po.po_number} disetujui. Inbound task otomatis dibuat.`);
+      const res = await axios.post(`${API}/purchase-orders/${po.id}/approve`);
+      const updated = res.data || {};
+      if (updated.status === "waiting_approval") {
+        const next = pendingLevelOf(getChain(updated));
+        setNotice(`PO ${po.po_number}: tingkat disetujui. Lanjut menunggu persetujuan ${roleLabel(next?.required_role)}.`);
+      } else {
+        setNotice(`PO ${po.po_number} disetujui penuh. Inbound task otomatis dibuat.`);
+      }
       await loadPOs();
     } catch (e) {
       setError(e.response?.data?.detail || "Gagal approve PO.");
@@ -120,8 +183,8 @@ export default function PurchaseApprovalView({ currentUser, selectedEntity }) {
 
       <div className="section-card">
         <div className="overflow-hidden">
-          <div className="grid grid-cols-[90px_1.3fr_120px_110px_120px_140px] px-3 py-1.5 bg-[#FAFBFC] text-[10px] font-bold uppercase text-[#6B6B73] border-b border-[#EFF0F2]">
-            <span>Nomor</span><span>Supplier / Gudang</span><span className="text-right">Total</span><span>Butuh Role</span><span>Status</span><span className="text-right">Aksi</span>
+          <div className="grid grid-cols-[90px_1.25fr_120px_180px_120px_150px] px-3 py-1.5 bg-[#FAFBFC] text-[10px] font-bold uppercase text-[#6B6B73] border-b border-[#EFF0F2]">
+            <span>Nomor</span><span>Supplier / Gudang</span><span className="text-right">Total</span><span>Tingkat Persetujuan</span><span>Status</span><span className="text-right">Aksi</span>
           </div>
           {loading ? (
             <div className="py-10 text-center text-[12px] text-[#6B6B73]">Memuat purchase order...</div>
@@ -134,10 +197,15 @@ export default function PurchaseApprovalView({ currentUser, selectedEntity }) {
             <div className="divide-y divide-[#EFF0F2] max-h-[600px] overflow-y-auto">
               {filtered.map((po) => {
                 const open = expandedId === po.id;
+                const chain = getChain(po);
+                const pending = pendingLevelOf(chain);
+                const totalLevels = po.approval_levels_total || chain.length;
+                const approveOk = canApproveNow(po);
+                const rejectOk = canRejectNow(po);
                 return (
                   <div key={po.id}>
                     <div data-testid={`po-approval-row-${po.id}`}
-                      className="grid grid-cols-[90px_1.3fr_120px_110px_120px_140px] items-center px-3 py-2.5 hover:bg-[#FAFBFC] cursor-pointer"
+                      className="grid grid-cols-[90px_1.25fr_120px_180px_120px_150px] items-center px-3 py-2.5 hover:bg-[#FAFBFC] cursor-pointer"
                       onClick={() => setExpandedId(open ? null : po.id)}>
                       <span className="flex items-center gap-0.5 text-[11.5px] font-bold text-[#0058CC]">
                         {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}{po.po_number}
@@ -147,20 +215,28 @@ export default function PurchaseApprovalView({ currentUser, selectedEntity }) {
                         <p className="text-[10.5px] text-[#6B6B73] truncate">{po.warehouse_name} · {po.items?.length || 0} item</p>
                       </div>
                       <span className="text-[12px] font-bold tabular-nums text-right">{formatCurrency(po.total_amount)}</span>
-                      <span className="text-[11px] uppercase font-semibold text-[#A05000]">{po.required_approval_role || "—"}</span>
+                      <ApprovalLevelCell po={po} chain={chain} pending={pending} totalLevels={totalLevels} />
                       <ApprovalStatusPill po={po} />
                       <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-                        {po.status === "waiting_approval" && canApprove ? (
-                          <>
-                            <button data-testid={`po-approve-${po.id}`} disabled={busyId === po.id}
-                              onClick={() => handleApprove(po)} className="primary-button !px-2.5 !py-1 text-[11px]">
-                              <CheckCircle size={12} /> Setujui
-                            </button>
-                            <button data-testid={`po-reject-${po.id}`} disabled={busyId === po.id}
-                              onClick={() => setRejectTarget(po)} className="danger-button !px-2.5 !py-1 text-[11px]">
-                              <XCircle size={12} /> Tolak
-                            </button>
-                          </>
+                        {po.status === "waiting_approval" ? (
+                          approveOk ? (
+                            <>
+                              <button data-testid={`po-approve-${po.id}`} disabled={busyId === po.id}
+                                onClick={() => handleApprove(po)} className="primary-button !px-2.5 !py-1 text-[11px]">
+                                <CheckCircle size={12} /> Setujui
+                              </button>
+                              <button data-testid={`po-reject-${po.id}`} disabled={busyId === po.id}
+                                onClick={() => setRejectTarget(po)} className="danger-button !px-2.5 !py-1 text-[11px]">
+                                <XCircle size={12} /> Tolak
+                              </button>
+                            </>
+                          ) : (
+                            <span data-testid={`po-approve-locked-${po.id}`}
+                              className="flex items-center gap-1 text-[10.5px] text-[#9A5B00] text-right leading-tight">
+                              <Lock size={11} className="shrink-0" />
+                              {rejectOk ? "—" : `Menunggu ${roleLabel(pending?.required_role)}`}
+                            </span>
+                          )
                         ) : (
                           <span className="text-[10.5px] text-[#9A9BA3]">
                             {po.approved_by ? `oleh ${po.approved_by}` : po.rejected_by ? `oleh ${po.rejected_by}` : "—"}
@@ -170,8 +246,9 @@ export default function PurchaseApprovalView({ currentUser, selectedEntity }) {
                     </div>
 
                     {open && (
-                      <ApprovalDetail po={po}
-                        canApprove={canApprove}
+                      <ApprovalDetail po={po} chain={chain} pending={pending} totalLevels={totalLevels}
+                        currentUser={currentUser}
+                        approveOk={approveOk}
                         busy={busyId === po.id}
                         onApprove={() => handleApprove(po)}
                         onReject={() => setRejectTarget(po)} />
@@ -201,19 +278,91 @@ export default function PurchaseApprovalView({ currentUser, selectedEntity }) {
   );
 }
 
-function ApprovalDetail({ po, canApprove, busy, onApprove, onReject }) {
+/** Sel kolom tabel: ringkas tingkat pending + progres "Tingkat X/Y". */
+function ApprovalLevelCell({ po, chain, pending, totalLevels }) {
+  if (po.status !== "waiting_approval") {
+    if (po.approval_status === "approved") {
+      return <span className="text-[10.5px] text-[#1B7A43] font-semibold">Selesai · {totalLevels} tingkat</span>;
+    }
+    return <span className="text-[10.5px] text-[#9A9BA3]">—</span>;
+  }
+  const currentLevelNo = pending?.level || 1;
+  return (
+    <div className="min-w-0" data-testid={`po-approval-levelcell-${po.id}`}>
+      <p className="text-[11px] uppercase font-semibold text-[#A05000] truncate">
+        {roleLabel(pending?.required_role)}
+        {pending?.label && pending.label !== "Approval" && pending.label !== roleLabel(pending.required_role) ? ` · ${pending.label}` : ""}
+      </p>
+      <p className="text-[10px] text-[#6B6B73]">Tingkat {currentLevelNo} dari {totalLevels}</p>
+    </div>
+  );
+}
+
+/** Stepper rantai approval — badge per tingkat dengan status & approver. */
+function ApprovalChainSteps({ po, chain, pending, totalLevels }) {
+  return (
+    <div className="rounded-md border border-[#EFF0F2] overflow-hidden" data-testid={`po-approval-chain-${po.id}`}>
+      <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#FAFBFC] text-[10px] font-bold uppercase text-[#6B6B73] border-b border-[#EFF0F2]">
+        <Layers size={12} /> Alur Persetujuan Berjenjang
+        <span className="ml-auto normal-case font-semibold text-[#0058CC]">
+          {po.status === "waiting_approval" ? `Tingkat ${pending?.level || 1} dari ${totalLevels}` : `${totalLevels} tingkat`}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-stretch gap-2 px-2.5 py-2.5">
+        {chain.map((lv, idx) => {
+          const isApproved = lv.status === "approved";
+          const isRejected = lv.status === "rejected" || po.status === "rejected";
+          const isCurrent = po.status === "waiting_approval" && pending && lv.level === pending.level;
+          let cls = "border-[#E3E4E8] bg-white text-[#6B6B73]"; // antri/future
+          let Icon = Clock;
+          let stateText = "Antri";
+          if (isApproved) { cls = "border-[#BFE6CD] bg-[#EFFBF3] text-[#1B7A43]"; Icon = CheckCircle; stateText = "Disetujui"; }
+          else if (isRejected && isCurrent) { cls = "border-[#F3C2C2] bg-[#FDF1F1] text-[#9B1C1C]"; Icon = XCircle; stateText = "Ditolak"; }
+          else if (isCurrent) { cls = "border-[#FFD9A8] bg-[#FFF7EC] text-[#9A5B00]"; Icon = Clock; stateText = "Menunggu"; }
+          return (
+            <div key={lv.level} className="flex items-center gap-2">
+              <div data-testid={`po-approval-step-${po.id}-${lv.level}`}
+                className={`min-w-[140px] rounded-md border px-2.5 py-1.5 ${cls}`}>
+                <div className="flex items-center gap-1 text-[11px] font-bold">
+                  <Icon size={12} className="shrink-0" />
+                  <span>L{lv.level} · {roleLabel(lv.required_role)}</span>
+                </div>
+                <div className="mt-0.5 text-[10px] font-semibold">{stateText}{isCurrent ? " (sekarang)" : ""}</div>
+                {isApproved && (
+                  <div className="text-[9.5px] opacity-80 truncate">
+                    {lv.approved_by || "—"}{lv.approved_at ? ` · ${String(lv.approved_at).slice(0, 10)}` : ""}
+                  </div>
+                )}
+              </div>
+              {idx < chain.length - 1 && <ChevronRight size={14} className="text-[#C7C8CE] shrink-0" />}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ApprovalDetail({ po, chain, pending, totalLevels, currentUser, approveOk, busy, onApprove, onReject }) {
   const flagged = po.price_deviation?.flagged;
+  const isCreator = po.created_by_id && currentUser?.id && po.created_by_id === currentUser.id;
+  const roleBlocked = po.status === "waiting_approval" && !approveOk && !isCreator;
   return (
     <div data-testid={`po-approval-detail-${po.id}`} className="bg-[#FCFCFD] border-t border-[#EFF0F2] px-3 py-3 space-y-2.5">
+      {/* Rantai approval berjenjang */}
+      {po.status !== "rejected" && (
+        <ApprovalChainSteps po={po} chain={chain} pending={pending} totalLevels={totalLevels} />
+      )}
+
       {/* Alasan kenapa butuh approval */}
       {flagged ? (
         <PODeviationBanner deviation={po.price_deviation} />
-      ) : (
+      ) : po.status === "waiting_approval" ? (
         <div className="flex items-center gap-1.5 rounded-md border border-[#FFE2B8] bg-[#FFF7EC] px-2.5 py-1.5 text-[11px] text-[#9A5B00]">
           <AlertCircle size={13} />
-          <span>Nilai PO <b className="tabular-nums">{formatCurrency(po.total_amount)}</b> melebihi batas approval; butuh persetujuan role <b className="uppercase">{po.required_approval_role || "manager"}</b>.</span>
+          <span>Nilai PO <b className="tabular-nums">{formatCurrency(po.total_amount)}</b> butuh persetujuan tingkat <b>{pending?.level || 1}/{totalLevels}</b> — role <b className="uppercase">{roleLabel(pending?.required_role)}</b>.</span>
         </div>
-      )}
+      ) : null}
 
       {/* Rincian item */}
       <div className="rounded-md border border-[#EFF0F2] overflow-hidden">
@@ -237,13 +386,25 @@ function ApprovalDetail({ po, canApprove, busy, onApprove, onReject }) {
       <POTimeline po={po} />
 
       {/* Aksi kontekstual */}
-      {po.status === "waiting_approval" && canApprove && (
-        <div className="flex justify-end gap-1.5">
-          <button data-testid={`po-approve-detail-${po.id}`} disabled={busy} onClick={onApprove}
-            className="primary-button !px-3 !py-1 text-[11px]"><CheckCircle size={12} /> Setujui PO</button>
-          <button data-testid={`po-reject-detail-${po.id}`} disabled={busy} onClick={onReject}
-            className="danger-button !px-3 !py-1 text-[11px]"><XCircle size={12} /> Tolak PO</button>
-        </div>
+      {po.status === "waiting_approval" && (
+        approveOk ? (
+          <div className="flex justify-end gap-1.5">
+            <button data-testid={`po-approve-detail-${po.id}`} disabled={busy} onClick={onApprove}
+              className="primary-button !px-3 !py-1 text-[11px]"><CheckCircle size={12} /> Setujui Tingkat {pending?.level || 1}</button>
+            <button data-testid={`po-reject-detail-${po.id}`} disabled={busy} onClick={onReject}
+              className="danger-button !px-3 !py-1 text-[11px]"><XCircle size={12} /> Tolak PO</button>
+          </div>
+        ) : (
+          <div data-testid={`po-approval-blocked-${po.id}`}
+            className="flex items-center gap-1.5 rounded-md border border-[#E3E4E8] bg-[#F7F8FA] px-2.5 py-1.5 text-[11px] text-[#6B6B73]">
+            <Lock size={13} className="shrink-0" />
+            {isCreator ? (
+              <span>Anda pembuat PO ini — pemisahan tugas (SoD) melarang menyetujui PO sendiri.</span>
+            ) : (
+              <span>Tingkat berjalan butuh role <b className="uppercase">{roleLabel(pending?.required_role)}</b>. Role Anda (<b className="uppercase">{roleLabel(currentUser?.role)}</b>) belum memenuhi — menunggu approver yang sesuai.</span>
+            )}
+          </div>
+        )
       )}
     </div>
   );

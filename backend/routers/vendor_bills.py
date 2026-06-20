@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pymongo import ReturnDocument
 from db import db
 from dependencies import require_permission, current_user, audit
-from core_utils import new_id, now_iso, safe_doc, DEFAULT_ENTITY_ID, timeline_entry
+from core_utils import new_id, now_iso, safe_doc, DEFAULT_ENTITY_ID, timeline_entry, next_doc_number
 from schemas import VendorBillCreate, VendorBillPaymentCreate, VendorBillDecision
 from services.config_service import compute_order_pricing, get_effective_settings, role_satisfies
 from services.vendor_bill_service import (
@@ -393,9 +393,8 @@ async def pay_vendor_bill(bill_id: str, payload: VendorBillPaymentCreate, reques
                             detail=f"Pembayaran ({amount}) melebihi sisa hutang ({fin['outstanding']}).")
 
     cash_entity = "all" if payload.cash_type == "kas_besar" else (payload.entity_id or bill.get("entity_id") or DEFAULT_ENTITY_ID)
-    cash_count = await db.cash_transactions.count_documents({})
     cash_doc = {
-        "id": new_id("cash"), "number": f"CASH-{cash_count + 1:05d}",
+        "id": new_id("cash"), "number": await next_doc_number("cash_transactions", "number", "CASH-"),
         "cash_type": payload.cash_type, "direction": "out", "amount": amount,
         "category": "pembelian",
         "description": f"Pembayaran {bill.get('bill_number')} — {bill.get('supplier_name','')} ({payload.method})",

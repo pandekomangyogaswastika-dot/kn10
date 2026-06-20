@@ -15,7 +15,7 @@ Koleksi kanonik: `rfqs` (prefix rfq_). Status: draft → open → awarded | canc
 """
 from typing import Any, Dict, List, Optional
 from db import db
-from core_utils import now_iso, new_id, DEFAULT_ENTITY_ID, safe_doc, timeline_entry
+from core_utils import now_iso, new_id, DEFAULT_ENTITY_ID, safe_doc, timeline_entry, next_doc_number
 from services.config_service import evaluate_approval, compute_order_pricing, get_effective_settings
 
 OPEN_STATUSES = {"draft", "open"}
@@ -192,10 +192,9 @@ async def _create_po_from_lines(supplier_id: str, lines: List[Dict[str, Any]],
     required_role = appr["required_role"]
 
     sup_contact = " | ".join([x for x in [supplier.get("pic_name", ""), supplier.get("phone", "")] if x])
-    count = await db.purchase_orders.count_documents({})
     now = now_iso()
     po = {
-        "id": new_id("po"), "po_number": f"PO-{count + 1:05d}",
+        "id": new_id("po"), "po_number": await next_doc_number("purchase_orders", "po_number", "PO-"),
         "supplier_id": supplier_id, "supplier_name": supplier.get("name", ""),
         "supplier_contact": sup_contact, "supplier_npwp": supplier.get("npwp", ""),
         "warehouse_id": warehouse["id"], "warehouse_name": warehouse.get("name", ""),

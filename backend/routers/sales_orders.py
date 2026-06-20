@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pymongo import ReturnDocument
 from db import db
 from dependencies import require_permission, audit, current_user
-from core_utils import new_id, now_iso, safe_doc, DEFAULT_ENTITY_ID
+from core_utils import new_id, now_iso, safe_doc, DEFAULT_ENTITY_ID, next_doc_number
 from schemas import GenericPatch, SalesOrderCreate, AllocationPreviewIn
 from services.inventory_service import expire_old_reservations
 from services.roll_service import (
@@ -221,8 +221,7 @@ async def create_order(payload: SalesOrderCreate, request: Request) -> Dict[str,
             "discount_percent": getattr(item_in, "discount_percent", 0) or 0,
             **special_meta,
         })
-    count = await db.sales_orders.count_documents({}) + 1
-    number = f"SO-{count:05d}"
+    number = await next_doc_number("sales_orders", "number", "SO-")
     customer_city = address.get("city", customer.get("city", ""))
     # Fase 1B — pricing engine (diskon item/order + PPN, ikut PKP entitas). INVARIAN-SAFE.
     pricing = await compute_order_pricing(raw_items, entity_id, payload.order_discount_percent)

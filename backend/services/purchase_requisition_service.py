@@ -14,7 +14,7 @@ Invarian (verify_data_integrity L4-PR):
 import re
 from typing import Any, Dict, List, Optional
 from db import db
-from core_utils import now_iso, new_id, DEFAULT_ENTITY_ID, safe_doc, timeline_entry
+from core_utils import now_iso, new_id, DEFAULT_ENTITY_ID, safe_doc, timeline_entry, next_doc_number
 from services.config_service import evaluate_approval, role_satisfies, compute_order_pricing
 
 # Status PO yang dianggap "pipeline terbuka" → menambah on_order (incoming) produk.
@@ -269,10 +269,9 @@ async def convert_to_po(pr_id: str, supplier_id: str, actor: Dict[str, Any],
         approval_reason = "price_deviation" if approval_reason == "" else "amount_threshold+price_deviation"
 
     sup_contact = " | ".join([x for x in [supplier.get("pic_name", ""), supplier.get("phone", "")] if x])
-    count = await db.purchase_orders.count_documents({})
     now = now_iso()
     po = {
-        "id": new_id("po"), "po_number": f"PO-{count + 1:05d}",
+        "id": new_id("po"), "po_number": await next_doc_number("purchase_orders", "po_number", "PO-"),
         "supplier_id": supplier_id, "supplier_name": supplier.get("name", ""),
         "supplier_contact": sup_contact, "supplier_npwp": supplier.get("npwp", ""),
         "warehouse_id": warehouse_id, "warehouse_name": warehouse["name"],

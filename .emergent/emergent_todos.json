@@ -8,19 +8,19 @@
     "status": "completed"
   },
   {
-    "content": "P0-A: Fix PO/PR/RFQ→PO (and TRF/SJ/FKT) number generators count+1 → max-based (deletion-safe)",
-    "status": "pending"
+    "content": "P0-A: Fix number generators → max-based (deletion-safe). POC 12/12, gates 119/0/0",
+    "status": "completed"
   },
   {
-    "content": "P1-C: Frontend Multi-Level Approval — render approval_chain, role-aware approve button, level progress",
-    "status": "pending"
+    "content": "P1-C: Frontend Multi-Level Approval — chain stepper, role-aware buttons, level progress (verified UI + API E2E flow). Added multi-level demo POs to seed",
+    "status": "completed"
   },
   {
-    "content": "P0-B: Resolve AP dualism (owner decision needed)",
-    "status": "pending"
+    "content": "testing_agent_v3 E2E for P0-A + P1-C",
+    "status": "in_progress"
   },
   {
-    "content": "Run full gates + testing_agent_v3 E2E for changes",
+    "content": "P0-B: Resolve AP dualism (owner decision needed) — report before this",
     "status": "pending"
   },
   {

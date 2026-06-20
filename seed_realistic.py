@@ -1900,7 +1900,76 @@ async def seed_purchase_approval_examples():
         "bin_id": "", "batch": "", "lot": "", "scan_log": [], "escalation": None,
         "created_at": ago(days=3), "updated_at": ago(days=3),
     })
-    print("✅ Purchase approval examples seeded (PO-00007 waiting, PO-00008 rejected, PO-00009 approved)")
+    # PO-00010 — MENUNGGU approval BERJENJANG (Fase 7.1): nilai ≥ Rp 500jt → 2 tingkat
+    # (L1 Manager, L2 Direksi/admin). Keduanya masih PENDING (antri di tingkat 1).
+    await db.purchase_orders.insert_one({
+        "id": "po_010", "po_number": "PO-00010",
+        "supplier_name": "Palembang Silk House", "supplier_contact": "Ibu Sri | 081299900004",
+        "supplier_npwp": "24.444.555.6-404.000",
+        "warehouse_id": "wh_jakarta", "status": "waiting_approval",
+        "approval_required": True, "required_approval_role": "manager", "approval_status": "pending",
+        "approval_chain": [
+            {"level": 1, "required_role": "manager", "label": "Approval", "status": "pending",
+             "approved_by": "", "approved_by_id": "", "approved_at": ""},
+            {"level": 2, "required_role": "admin", "label": "Direksi", "status": "pending",
+             "approved_by": "", "approved_by_id": "", "approved_at": ""},
+        ],
+        "approval_level_current": 1, "approval_levels_total": 2,
+        "approval_amount": 588000000.0, "approval_reason": "amount_threshold",
+        "price_deviation": {"flagged": False},
+        "items": [
+            {"product_id": "prod_songket_palembang", "sku": "SGK-PLB-001",
+             "product_name": "Songket Palembang Benang Emas",
+             "quantity": 1400.0, "received_qty": 0.0, "unit": "meter", "price": 420000, "status": "pending"},
+        ],
+        "warehouse_name": "Gudang Jakarta Utara", "warehouse_city": "Jakarta",
+        "total_amount": 588000000.0,
+        "expected_delivery_date": ago(days=-14),
+        "notes": "Order besar songket — butuh persetujuan berjenjang (Manager → Direksi)",
+        "timeline": [
+            {"event": "created", "label": "PO dibuat", "actor": "Admin",
+             "at": ago(days=1), "note": "1 item · Rp 588.000.000"},
+            {"event": "submitted_for_approval", "label": "Menunggu persetujuan manager",
+             "actor": "Admin", "at": ago(days=1), "note": "nilai ≥ Rp 500jt → 2 tingkat (Manager, Direksi)"},
+        ],
+        "created_by": "Admin", "created_at": ago(days=1), "updated_at": ago(days=1),
+    })
+    # PO-00011 — BERJENJANG, tingkat 1 (Manager) SUDAH disetujui, menunggu tingkat 2 (Direksi/admin).
+    await db.purchase_orders.insert_one({
+        "id": "po_011", "po_number": "PO-00011",
+        "supplier_name": "Bali Weave Studio", "supplier_contact": "Ibu Kadek | 081388800006",
+        "supplier_npwp": "26.666.777.8-406.000",
+        "warehouse_id": "wh_surabaya", "status": "waiting_approval",
+        "approval_required": True, "required_approval_role": "admin", "approval_status": "pending",
+        "approval_chain": [
+            {"level": 1, "required_role": "manager", "label": "Approval", "status": "approved",
+             "approved_by": "Dewi Rahayu", "approved_by_id": "user_manager_01", "approved_at": ago(days=1)},
+            {"level": 2, "required_role": "admin", "label": "Direksi", "status": "pending",
+             "approved_by": "", "approved_by_id": "", "approved_at": ""},
+        ],
+        "approval_level_current": 2, "approval_levels_total": 2,
+        "approval_amount": 520000000.0, "approval_reason": "amount_threshold",
+        "price_deviation": {"flagged": False},
+        "items": [
+            {"product_id": "prod_tenun_ikat", "sku": "TNI-GRGD-001",
+             "product_name": "Tenun Ikat Garuda Premium",
+             "quantity": 2600.0, "received_qty": 0.0, "unit": "meter", "price": 200000, "status": "pending"},
+        ],
+        "warehouse_name": "Gudang Surabaya Rungkut", "warehouse_city": "Surabaya",
+        "total_amount": 520000000.0,
+        "expected_delivery_date": ago(days=-12),
+        "notes": "Tenun ikat partai besar — Manager sudah setuju, menunggu persetujuan Direksi",
+        "timeline": [
+            {"event": "created", "label": "PO dibuat", "actor": "Admin",
+             "at": ago(days=2), "note": "1 item · Rp 520.000.000"},
+            {"event": "submitted_for_approval", "label": "Menunggu persetujuan manager",
+             "actor": "Admin", "at": ago(days=2), "note": "nilai ≥ Rp 500jt → 2 tingkat"},
+            {"event": "approved_level", "label": "Disetujui tingkat 1 (Approval)",
+             "actor": "Dewi Rahayu", "at": ago(days=1), "note": "Lanjut ke Direksi"},
+        ],
+        "created_by": "Admin", "created_at": ago(days=2), "updated_at": ago(days=1),
+    })
+    print("✅ Purchase approval examples seeded (PO-00007 waiting, PO-00008 rejected, PO-00009 approved, PO-00010/00011 multi-level)")
 
 
 async def seed_suppliers():

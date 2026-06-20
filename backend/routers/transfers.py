@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Request, Query
 from pymongo import ReturnDocument
 from db import db
 from dependencies import require_permission, audit
-from core_utils import new_id, now_iso, safe_doc
+from core_utils import new_id, now_iso, safe_doc, next_doc_number
 from schemas import TransferCreate, TransferApprove, TransferReject, TransferStatusUpdate, InterCompanyTransferCreate
 from services.roll_service import (
     reserve_rolls_for_transfer, execute_ownership_transfer, release_transfer_rolls,
@@ -114,9 +114,8 @@ async def create_transfer(payload: TransferCreate, request: Request) -> Dict[str
         if item.qty <= 0:
             raise HTTPException(status_code=400, detail="Qty harus lebih dari 0")
     
-    # Generate transfer code
-    count = await db.warehouse_transfers.count_documents({})
-    code = f"TRF-{count + 1:05d}"
+    # Generate transfer code (deletion-safe / max-based — P0-A)
+    code = await next_doc_number("warehouse_transfers", "code", "TRF-")
     
     transfer = {
         "id": new_id("trn"),
@@ -164,8 +163,7 @@ async def create_inter_company_transfer(payload: InterCompanyTransferCreate, req
         raise HTTPException(status_code=400, detail="Items tidak boleh kosong")
 
     transfer_id = new_id("trn")
-    count = await db.warehouse_transfers.count_documents({})
-    code = f"TRF-{count + 1:05d}"
+    code = await next_doc_number("warehouse_transfers", "code", "TRF-")
 
     items_out: List[Dict[str, Any]] = []
     wh_ids: List[str] = []

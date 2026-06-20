@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional, Tuple
 from fastapi import HTTPException
 from pymongo import ReturnDocument
 from db import db
-from core_utils import new_id, now_iso, safe_doc
+from core_utils import new_id, now_iso, safe_doc, next_doc_number
 from services.roll_service import ship_order_rolls
 from services.fulfillment_status import recompute_so_status
 
@@ -21,8 +21,7 @@ NON_DISPATCHABLE = {"dispatched", "cancelled", "escalated"}
 
 
 async def _next_shipment_no() -> str:
-    count = await db.shipments.count_documents({})
-    return f"SJ-{count + 1:05d}"
+    return await next_doc_number("shipments", "shipment_no", "SJ-")
 
 
 async def dispatch_task(

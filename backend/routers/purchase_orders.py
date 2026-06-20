@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pymongo import ReturnDocument
 from db import db
 from dependencies import require_permission, audit, current_user
-from core_utils import new_id, now_iso, safe_doc, DEFAULT_ENTITY_ID, timeline_entry
+from core_utils import new_id, now_iso, safe_doc, DEFAULT_ENTITY_ID, timeline_entry, next_doc_number
 from schemas import PurchaseOrderCreate, POReceiveItem, POPaymentCreate, POCloseRequest
 from services.config_service import evaluate_approval, build_approval_chain, current_pending_level, role_satisfies, get_effective_settings, compute_order_pricing
 
@@ -230,9 +230,8 @@ async def create_purchase_order(payload: PurchaseOrderCreate, request: Request) 
     total_amount = pricing["total_amount"]
     grand_total = pricing["grand_total"]
 
-    # Generate PO number
-    count = await db.purchase_orders.count_documents({})
-    po_number = f"PO-{count + 1:05d}"
+    # Generate PO number (deletion-safe / max-based — P0-A)
+    po_number = await next_doc_number("purchase_orders", "po_number", "PO-")
 
     # Fase 7.1 — kebutuhan approval BERJENJANG (multi-level) dari approval_rules + extra_levels
     appr = await build_approval_chain("purchase_order", total_amount, entity_id)
@@ -493,9 +492,8 @@ async def pay_purchase_order(po_id: str, payload: POPaymentCreate, request: Requ
         cash_entity = "all"
     else:
         cash_entity = payload.entity_id or po.get("entity_id") or DEFAULT_ENTITY_ID
-    cash_count = await db.cash_transactions.count_documents({})
     cash_doc = {
-        "id": new_id("cash"), "number": f"CASH-{cash_count + 1:05d}",
+        "id": new_id("cash"), "number": await next_doc_number("cash_transactions", "number", "CASH-"),
         "cash_type": payload.cash_type, "direction": "out", "amount": amount,
         "category": "pembelian",
         "description": f"Pembayaran {po.get('po_number')} — {po.get('supplier_name','')} ({payload.method})",
