@@ -1,0 +1,30 @@
+[
+  {
+    "content": "Setup: copy repo KN10, install deps, run load_context, read Tier-0 + handoff",
+    "status": "completed"
+  },
+  {
+    "content": "Baseline: seed_reset (119/0/0), verify app loads + login works",
+    "status": "completed"
+  },
+  {
+    "content": "P0-A: Fix PO/PR/RFQ→PO (and TRF/SJ/FKT) number generators count+1 → max-based (deletion-safe)",
+    "status": "pending"
+  },
+  {
+    "content": "P1-C: Frontend Multi-Level Approval — render approval_chain, role-aware approve button, level progress",
+    "status": "pending"
+  },
+  {
+    "content": "P0-B: Resolve AP dualism (owner decision needed)",
+    "status": "pending"
+  },
+  {
+    "content": "Run full gates + testing_agent_v3 E2E for changes",
+    "status": "pending"
+  },
+  {
+    "content": "Update plan.md + SESSION_HANDOFF.md",
+    "status": "pending"
+  }
+]
