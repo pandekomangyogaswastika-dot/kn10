@@ -44,7 +44,7 @@
 | `routers/outbound_picking.py` | Outbound | GET /outbound/tasks, POST /outbound/tasks/{id}/scan-pick, /escalate, /resolve-escalation, /dispatch, GET /outbound/so/{id}/surat-jalan | 552 | 🔴 MELEBIHI BATAS |
 | `routers/transfers.py` | Transfers | GET/POST /transfers, GET/POST/DELETE /transfers/{id}, /approve, /reject, /status | 442 | ✅ OK |
 | `routers/cycle_count.py` | Cycle Count | POST/GET /cycle-count/sessions, GET/POST /{id}, /{id}/items, /{id}/submit, /approve, /reject | 242 | ✅ OK |
-| `routers/purchase_orders.py` | PO | GET/POST /purchase-orders, GET/POST /purchase-orders/{id}, /cancel | 176 | ✅ OK |
+| `routers/purchase_orders.py` | PO | GET/POST /purchase-orders, GET/POST /purchase-orders/{id}, /amend (Phase 7.2 → po_amendment_service), /approve, /reject, /pay, /close, /cancel | 655 | ✅ OK |
 | `routers/dashboard.py` | Dashboard | GET /dashboard | 45 | ✅ OK |
 | `routers/reporting.py` | Reports | GET /reports/stock-aging, /reservation-funnel, /order-velocity, /top-customers, /warehouse-utilization, /summary | 227 | ✅ OK |
 | `routers/documents.py` | Documents | GET/POST/PATCH/DELETE /document-templates, POST /documents/generate, GET /documents/preview/{id}, POST /documents/barcode | 121 | ✅ OK |
@@ -62,6 +62,7 @@
 | `services/label_printer_service.py` | Label generation logic | ~100 |
 | `services/demo_seed_service.py` | Demo seed runner (calls seed_realistic.py) | ~88 |
 | `services/storage_service.py` | Emergent Object Storage wrapper (upload bukti, reusable) — Sub-fase 1.7 | ~120 |
+| `services/po_amendment_service.py` | **Phase 7.2** — `amend_po()` + `diff_po_items()`: amandemen PO (item/supplier/gudang/tgl/catatan), version history + snapshot + diff, re-approval penuh, guard partial-receiving. Router thin memanggil ini (kembalikan `{po, needs_approval}`). | 274 |
 
 ---
 
@@ -101,7 +102,9 @@
 | Component | File | Props Kunci | Baris | Status |
 |-----------|------|-------------|-------|--------|
 | `AdminView` | `features/admin/AdminView.jsx` | `{user, products, customers, warehouses, uoms, users, token, ...}` | ~400 | ✅ OK |
-| `PurchaseOrderManagement` | `features/admin/PurchaseOrderManagement.jsx` | `{user}` | ~400 | ✅ OK |
+| `PurchaseOrderManagement` | `features/admin/PurchaseOrderManagement.jsx` | `{user}` (sub: po/POCreateForm, po/PODetailPanel, po/POAmendModal, po/POVersionHistory, po/POTimeline) | 314 | ✅ OK |
+| `POAmendModal` | `features/admin/po/POAmendModal.jsx` | **Phase 7.2** — form revisi PO (item/supplier/gudang/tgl/catatan + alasan wajib + guard partial-receiving + warning re-approval) | 291 | ✅ OK |
+| `POVersionHistory` | `features/admin/po/POVersionHistory.jsx` | **Phase 7.2** — riwayat amandemen (snapshot + diff per versi, expandable) | 103 | ✅ OK |
 | `DocumentsView` | `features/documents/DocumentsView.jsx` | `{templates, lastDocument, lastLabel, onGenerateLabel, products}` | ~350 | ✅ OK |
 | `CycleCount` | `features/inventory/CycleCount.jsx` | `{token, warehouses, products, userRole}` | ~340 | ✅ OK |
 | `EscalationManagement` | `features/manager/EscalationManagement.jsx` | `{user}` | ~280 | ✅ OK |

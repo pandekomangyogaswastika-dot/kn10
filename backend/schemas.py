@@ -289,6 +289,54 @@ class PurchaseOrderAmend(BaseModel):
     amended_by: str = "Admin"
 
 
+# ─── Blanket / Contract PO Schemas (P2 — call-off) ───────────────────────────
+
+class BlanketPOItemCreate(BaseModel):
+    product_id: str
+    contract_qty: float                # 1.c — komitmen kuantitas per item
+    contract_price: float = 0.0        # harga sepakat (default call-off; 3.b boleh override)
+    unit: str = ""                     # default = base_unit produk
+
+
+class BlanketPOCreate(BaseModel):
+    """P2 — kontrak Blanket/Contract PO. Tidak memicu penerimaan; call-off yang menariknya."""
+    supplier_id: str = ""
+    supplier_name: str = ""
+    supplier_contact: str = ""
+    warehouse_id: str                  # gudang default untuk call-off
+    items: List[BlanketPOItemCreate]
+    contract_value_cap: float = 0.0    # 1.c — plafon nilai GROSS (Rp); 0 = Σ qty×harga
+    valid_from: str = ""
+    valid_until: str = ""              # "" = open (tak kadaluarsa)
+    notes: str = ""
+    created_by: str = "Admin"
+    entity_id: str = ""
+
+
+class CallOffItemCreate(BaseModel):
+    product_id: str
+    quantity: float
+    unit: str = ""
+    price: float = 0.0                 # 0 = pakai harga kontrak; >0 & beda = override (3.b)
+    discount_percent: float = 0
+
+
+class CallOffCreate(BaseModel):
+    """P2 — call-off (release) terhadap Blanket PO → menjadi PO anak normal (2.a)."""
+    items: List[CallOffItemCreate]
+    warehouse_id: str = ""             # default ikut kontrak
+    expected_delivery_date: str = ""
+    notes: str = ""
+    price_override_reason: str = ""    # WAJIB bila ada override harga (3.b)
+    order_discount_percent: float = 0
+    tax_mode: str = ""
+    created_by: str = "Admin"
+
+
+class BlanketCloseRequest(BaseModel):
+    reason: str = ""
+
+
 # ─── Procurement Schemas (Fase 3 — Supplier Master + Pengelolaan Kas) ─────────
 
 class SupplierCreate(BaseModel):

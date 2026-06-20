@@ -1,4 +1,4 @@
-import { FileText, Clock, CheckCircle2, XCircle, PackageCheck, Package, Wallet, Ban, History } from "lucide-react";
+import { FileText, Clock, CheckCircle2, XCircle, PackageCheck, Package, Wallet, Ban, History, FileEdit } from "lucide-react";
 
 /**
  * POTimeline — riwayat / timeline approval & lifecycle Purchase Order.
@@ -18,6 +18,7 @@ const EVENT_META = {
   paid:                   { Icon: Wallet,       tone: "#15803D", bg: "#E9F7EF" },
   closed_short:           { Icon: Ban,          tone: "#78716C", bg: "#F5F5F4" },
   cancelled:              { Icon: Ban,          tone: "#6B6B73", bg: "#F3F4F6" },
+  amended:                { Icon: FileEdit,     tone: "#6B219A", bg: "#F3E8FF" },
 };
 
 function fmtDateTime(iso) {

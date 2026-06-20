@@ -5,6 +5,7 @@ import { formatCurrency } from "../../utils/formatters";
 import { getStatusBadge } from "./po/poUtils";
 import POCreateForm from "./po/POCreateForm";
 import PODetailPanel from "./po/PODetailPanel";
+import POAmendModal from "./po/POAmendModal";
 import ConfirmModal from "../../components/ConfirmModal";
 import ErrorNotice from "../../components/ErrorNotice";
 
@@ -31,6 +32,8 @@ export default function PurchaseOrderManagement({ user, onApprovePO }) {
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
   const [confirm, setConfirm] = useState(null); // { title, message, confirmLabel, danger, withReason, onConfirm }
+  const [amendPO, setAmendPO] = useState(null);  // Phase 7.2 — PO yang sedang direvisi
+  const [amending, setAmending] = useState(false);
 
   const emptyForm = {
     supplier_id: "", supplier_name: "", supplier_contact: "", warehouse_id: "",
@@ -181,6 +184,26 @@ export default function PurchaseOrderManagement({ user, onApprovePO }) {
     setFormData(emptyForm);
   };
 
+  // Phase 7.2 — submit amandemen PO (re-approval penuh di backend).
+  const handleSubmitAmend = async (payload) => {
+    if (!amendPO) return;
+    setAmending(true);
+    try {
+      const res = await axios.post(`${API}/purchase-orders/${amendPO.id}/amend`, payload);
+      const po = res.data;
+      setNotice(po.approval_required
+        ? `PO ${po.po_number} direvisi (v${po.version}). Menunggu APPROVAL role '${po.required_approval_role}' sebelum inbound task dibuat.`
+        : `PO ${po.po_number} direvisi (v${po.version}). Inbound task diperbarui otomatis.`);
+      setAmendPO(null);
+      await fetchPOs();
+      await handleViewDetail(po.id);
+    } catch (e) {
+      setError(e.response?.data?.detail || "Gagal merevisi PO.");
+    } finally {
+      setAmending(false);
+    }
+  };
+
   return (
     <div data-testid="po-management-panel">
       {notice && <div className="notice-bar success" data-testid="po-mgmt-notice"><span>{notice}</span><button onClick={() => setNotice("")}>×</button></div>}
@@ -257,8 +280,21 @@ export default function PurchaseOrderManagement({ user, onApprovePO }) {
           onApprove={handleApprovePO}
           onCancel={handleCancelPO}
           onCloseShort={handleCloseShort}
+          onAmend={(po) => { setError(""); setAmendPO(po); }}
         />
       </div>
+
+      {amendPO && (
+        <POAmendModal
+          po={amendPO}
+          products={products}
+          warehouses={warehouses}
+          suppliers={suppliers}
+          submitting={amending}
+          onSubmit={handleSubmitAmend}
+          onClose={() => setAmendPO(null)}
+        />
+      )}
 
       <ConfirmModal
         open={!!confirm}

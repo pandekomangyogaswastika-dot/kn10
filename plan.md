@@ -58,19 +58,20 @@ PO · Purchase Requisition · RFQ/Quotation · Saran Reorder · Pemasok · Appro
 
 ## 4) Backlog (disetujui owner, urut)
 - ✅ ~~**P1:** Catch-weight / Dual-UoM pembelian~~ — SELESAI Sesi #043 (Fase 8).
-- **P2 (aktif):** **Phase 7.2 PO Amendment / Version History**.
-- **P2 berikutnya:** Blanket/Contract PO (call-off) · Kirim PO PDF ke supplier (email) · Multi-currency/FX · Budget/Commitment Control.
+- ✅ ~~**P2:** Phase 7.2 PO Amendment / Version History~~ — SELESAI Sesi #044 (lihat §5).
+- **P2 berikutnya (aktif):** Blanket/Contract PO (call-off) · Kirim PO PDF ke supplier (email) · Multi-currency/FX · Budget/Commitment Control.
 
 ## 5) Rekomendasi URUTAN aksi agent berikutnya
 - ✅ ~~1. Bersihkan state + perbaiki generator nomor → max-based (P0-A)~~
 - ✅ ~~2. Selesaikan Frontend Phase 7.1 (P1-C)~~
 - ✅ ~~3. Putuskan & rapikan AP dualism (P0-B)~~
 - ✅ ~~4. Catch-weight / Dual-UoM (P1)~~
-- **SEKARANG (P2): Phase 7.2 PO Amendment / Version History**
-  1) Uji endpoint amend via POC (backend) 
-  2) Refactor agar `purchase_orders.py` < 800 baris (fix 2 GATE FAIL)
-  3) Implement UI amend + history/diff (FE)
-  4) Jalankan semua gate + testing_agent_v3
+- ✅ ~~**Phase 7.2 PO Amendment / Version History (P2)** — SELESAI Sesi #044~~
+  1) ✅ POC backend `test_po_amendment_poc.py` — 33/33 PASS.
+  2) ✅ Refactor: domain logic diekstrak ke `services/po_amendment_service.py`; `routers/purchase_orders.py` thin → **848 → 655 baris** (compliance 2 FAIL → 0 FAIL).
+  3) ✅ Frontend: `POAmendModal.jsx` (form revisi: item/supplier/gudang/tgl/catatan + alasan wajib + peringatan re-approval + guard partial-receiving) & `POVersionHistory.jsx` (snapshot + diff per versi); tombol "Revisi / Amandemen PO" + badge versi + event `amended` di timeline (PODetailPanel/PurchaseOrderManagement/POTimeline).
+  4) ✅ Gate hijau (compliance 67/0, verify_api_contract 0 ERR, ux_audit 0 ERR, endpoint_sweep 0×5xx, esbuild 0) + testing_agent_v3: backend 29/29, frontend 100%.
+- **BERIKUTNYA (P2):** Blanket/Contract PO (call-off) → Kirim PO PDF ke supplier (email) → Multi-currency/FX → Budget/Commitment Control.
 
 > Setiap perubahan WAJIB lewat gate: `seed_reset.sh` → `health_check.py` → `verify_data_integrity.py` → `verify_api_contract.py` → `ux_audit.py` → `check_nav_map.py` + esbuild. Jangan rename `data-testid` yang sudah ada. Jaga invarian (`total_amount` GROSS, breakdown pajak di field terpisah).
 

@@ -1,7 +1,8 @@
-import { FileText, CheckCircle, XCircle, AlertCircle, Receipt, Ban } from "lucide-react";
+import { FileText, CheckCircle, XCircle, AlertCircle, Receipt, Ban, FileEdit } from "lucide-react";
 import { formatCurrency } from "../../../utils/formatters";
 import { getStatusBadge } from "./poUtils";
 import POTimeline from "./POTimeline";
+import POVersionHistory from "./POVersionHistory";
 import PODeviationBanner from "./PODeviationBanner";
 
 /**
@@ -11,9 +12,9 @@ import PODeviationBanner from "./PODeviationBanner";
  * supplier dikelola SATU PINTU di menu "Tagihan Supplier" (Vendor Bill). Panel
  * ini hanya menampilkan STATUS PENAGIHAN informasional + ajakan buat Vendor Bill.
  *
- * Props: po, currentUser, onClose, onApprove, onCancel, onCloseShort
+ * Props: po, currentUser, onClose, onApprove, onCancel, onCloseShort, onAmend
  */
-export default function PODetailPanel({ po, currentUser, onClose, onApprove, onCancel, onCloseShort }) {
+export default function PODetailPanel({ po, currentUser, onClose, onApprove, onCancel, onCloseShort, onAmend }) {
   if (!po) {
     return (
       <div className="section-card flex items-center justify-center min-h-[200px] border-dashed">
@@ -27,6 +28,8 @@ export default function PODetailPanel({ po, currentUser, onClose, onApprove, onC
 
   const canManage = ["admin", "manager"].includes(currentUser?.role);
   const goodsReceived = ["receiving", "partial", "completed", "closed_short"].includes(po.status);
+  const amendable = ["waiting_approval", "pending", "receiving", "partial"].includes(po.status);
+  const version = Number(po.version || 1);
 
   // Ringkasan penagihan (di-maintain Vendor Bill via sync_po_billing).
   const grand = Number(po.grand_total ?? po.total_amount ?? 0);
@@ -44,6 +47,9 @@ export default function PODetailPanel({ po, currentUser, onClose, onApprove, onC
           <p className="text-[10px] font-bold uppercase text-[#0058CC]">{po.po_number}</p>
           <div className="mt-0.5 flex items-center gap-1">
             {getStatusBadge(po.status)}
+            {version > 1 && (
+              <span data-testid="po-version-badge" className="rounded bg-[#F3E8FF] px-1.5 py-0.5 text-[10px] font-semibold text-[#6B219A]">v{version}</span>
+            )}
             {goodsReceived && (
               <span data-testid="po-billing-badge" className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${billState.cls}`}>{billState.label}</span>
             )}
@@ -162,8 +168,16 @@ export default function PODetailPanel({ po, currentUser, onClose, onApprove, onC
         {/* Riwayat / timeline approval PO */}
         <POTimeline po={po} />
 
+        {/* Phase 7.2 — Riwayat amandemen (snapshot + diff per versi) */}
+        {po.amendments?.length > 0 && <POVersionHistory amendments={po.amendments} currentVersion={version} />}
+
         {/* Actions */}
         <div className="flex flex-col gap-1.5">
+          {amendable && canManage && (
+            <button data-testid="amend-po-button" onClick={() => onAmend?.(po)} className="secondary-button justify-center">
+              <FileEdit size={13} /> Revisi / Amandemen PO
+            </button>
+          )}
           {po.status === "waiting_approval" && canManage && (
             <button data-testid="approve-po-button" onClick={() => onApprove(po.id)} className="primary-button justify-center">
               <CheckCircle size={13} /> Approve PO

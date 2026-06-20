@@ -1,34 +1,34 @@
 [
   {
-    "content": "Backend: write & run test_po_amendment_poc.py verifying amend endpoint (reason mandatory, partial-receive guards, re-approval reset, snapshot+diff, idempotent inbound tasks)",
+    "content": "Study existing create_purchase_order + approval chain + _create_inbound_tasks_for_po for reuse by call-offs",
     "status": "completed"
   },
   {
-    "content": "Backend refactor: extract amend logic + _diff_po_items into services/po_amendment_service.py; thin router wrapper → purchase_orders.py < 800 lines (fix 2 compliance FAILs)",
+    "content": "Backend: blanket_po_service + schemas (create blanket, drawdown, call-off w/ over-call approval + price override + guards)",
+    "status": "completed"
+  },
+  {
+    "content": "Backend: wire endpoints in purchase_orders router (refactor _create_po_core, blanket CRUD, call-off, close-contract)",
+    "status": "completed"
+  },
+  {
+    "content": "POC test (blanket_po POC) — 44/44 PASS",
+    "status": "completed"
+  },
+  {
+    "content": "Frontend: BlanketPOManager (tab), BlanketCreateForm, BlanketList, BlanketDetailPanel (drawdown + call-offs), CallOffModal",
     "status": "in_progress"
   },
   {
-    "content": "Frontend: add 'Amend / Revisi PO' trigger button in PODetailPanel (admin/manager, amendable statuses)",
+    "content": "Run gates (compliance/contract/ux_audit/endpoint_sweep/integrity) + esbuild",
     "status": "pending"
   },
   {
-    "content": "Frontend: create POAmendModal.jsx (edit supplier/warehouse/date/notes/items + MANDATORY reason)",
+    "content": "E2E testing via testing_agent_v3 + fix all issues",
     "status": "pending"
   },
   {
-    "content": "Frontend: create POAmendmentHistory.jsx (version timeline + per-version diff + snapshot_before) in PO Detail; add 'amended' meta to POTimeline",
-    "status": "pending"
-  },
-  {
-    "content": "Frontend: wire handleAmendPO + state in PurchaseOrderManagement.jsx",
-    "status": "pending"
-  },
-  {
-    "content": "Run all gates (seed_reset, verify_api_contract, ux_audit, validate_compliance 0 FAIL, check_nav_map, esbuild) + register FE bindings",
-    "status": "pending"
-  },
-  {
-    "content": "testing_agent_v3 backend + frontend for PO Amendment; fix reported bugs",
+    "content": "Update plan.md + CODEBASE_MAP + ENTITY_REGISTRY; report for Emergent push",
     "status": "pending"
   }
 ]
