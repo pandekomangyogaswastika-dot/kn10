@@ -26,13 +26,12 @@ PO · Purchase Requisition · RFQ/Quotation · Saran Reorder · Pemasok · Appro
 
 ## 3) ⚠️ KEKELIRUAN / GAP DITEMUKAN (urut prioritas — untuk diperbaiki)
 
-### 🔴 P0-A — [DATA/BUG] Tabrakan nomor PO + artefak test tertinggal
-- **Bukti:** `count_documents`=11 tapi nomor maks = **PO-00012** (PO-00010 terhapus saat POC). `po_number = f"PO-{count+1:05d}"` → **PO berikutnya = PO-00012 = DUPLIKAT** (diuji: `NEXT PO COLLISION: True`). Gate L5 (number unik) saat ini lolos tapi akan GAGAL begitu PO baru dibuat.
-- **Pola rawan ada di 3 generator nomor PO**: `routers/purchase_orders.py:235`, `services/purchase_requisition_service.py:275` (PR→PO), `services/rfq_service.py:198` (RFQ award→PO) — semua `count+1`. Juga `transfers` (TRF), `shipment_service` (SJ), `tax_invoice_service` (FKT). Modul baru (vendor_bills/input_tax/landed_cost) SUDAH aman (max-based `next_*_number`).
-- **Artefak test tertinggal di DB produksi**: **PO-00011 & PO-00012** (Rp 555jt, status `waiting_approval`) dari `test_multilevel_approval_poc.py` → muncul di antrian Approval.
-- **Rekomendasi:** (1) Refactor generator nomor PO/PR/TRF/SJ/FKT → pola max-based seperti `vendor_bill_service.next_bill_number` (deletion-safe). (2) Bersihkan artefak: jalankan `bash scripts/seed_reset.sh` ATAU hapus PO-00010..00012 sisa POC sebelum lanjut. **Lakukan SEBELUM membuat PO baru.**
+### 🔴 P0-A — [RESOLVED ✅ Sesi #042] Tabrakan nomor PO + artefak test tertinggal
+- **FIX:** Helper bersama `core_utils.next_doc_number(collection, field, prefix)` (max-based, deletion-safe) menggantikan SEMUA generator `count_documents()+1`: PO (`purchase_orders.py`), PR→PO (`purchase_requisition_service.py`), RFQ-award→PO (`rfq_service.py`), SO (`sales_orders.py`), TRF (`transfers.py` ×2), SJ (`shipment_service.py`), FKT (`tax_invoice_service.py`), dan inline CASH (`purchase_orders.py`/`landed_cost.py`/`vendor_bills.py`).
+- **Bukti:** POC `test_number_series_poc.py` **12/12** (reproduksi skenario hapus-tengah: count+1 → PO-00012 DUPLIKAT vs next_doc_number → PO-00013 AMAN). Real API: create PO → PO-00010 (max+1). Gate seed_reset **119/0/0**. testing_agent iter_33 backend 13/13.
+- Generator yang SUDAH aman sebelumnya (SUP/VB/RFQ#/PR#/FPM/LCV/CASH-helper) dibiarkan (lulus gate).
 
-### 🔴 P0-B — [INTEGRASI] Dualisme AP (potensi double-count hutang & kas)
+### 🔴 P0-B — [INTEGRASI] Dualisme AP (potensi double-count hutang & kas) — MENUNGGU KEPUTUSAN OWNER
 - **Dua sistem AP berjalan paralel tanpa rekonsiliasi:**
   - Menu **Hutang Supplier (AP)** = `/purchase-orders/payables/summary` + endpoint PO `/pay` → AP dihitung langsung dari `grand_total` PO (`_po_financials`).
   - Menu **Tagihan Supplier** = `/vendor-bills/payables/summary` + endpoint bill `/pay` → AP dari Vendor Bill posted (`bill_financials`).
@@ -40,14 +39,11 @@ PO · Purchase Requisition · RFQ/Quotation · Saran Reorder · Pemasok · Appro
 - **Catatan:** belum termanifestasi di data seekarang (vendor_bills=0). Tapi arsitektur mengizinkannya begitu Vendor Bill dipakai.
 - **Rekomendasi (perlu keputusan owner):** Jadikan Vendor Bill satu-satunya sumber AP. Pilihan: (a) `_po_financials`/payables PO menampilkan **hanya unbilled** (= grand_total − billed_total) + sembunyikan tombol PO `/pay` bila sudah ada bill; atau (b) retire menu "Hutang Supplier (AP)" PO-based, arahkan ke Vendor Bill. Tegaskan PO `/pay` hanya untuk DP/uang muka (kalau memang dibutuhkan) dengan label jelas.
 
-### 🟠 P1-C — [IN PROGRESS] Frontend Multi-Level Approval BELUM dibuat (Task utama yang di-pause)
-- **File:** `/app/frontend/src/features/purchasing/PurchaseApprovalView.jsx`.
-- **Kondisi sekarang (terbukti via screenshot):** PO 2-level (PO-00011/00012) hanya tampil **"Butuh Role: MANAGER"**; tidak ada indikasi Level-2 (Direksi). Status pill cuma "Menunggu" tanpa progress tingkat.
-- **Gap presisi:**
-  1. Tidak me-render `po.approval_chain[]` (per-level badge: L1 Manager ✓ Disetujui / L2 Direksi ⏳ Menunggu) — data tersedia: `approval_chain`, `approval_level_current`, `approval_levels_total`, tiap elemen punya `{level, required_role, label, status, approved_by, approved_at}`.
-  2. `canApprove = ["admin","manager"].includes(role)` **tidak** mengecek apakah role user memenuhi **level pending saat ini**. Akibat: manager melihat tombol "Setujui" untuk PO yang sedang di level Direksi (admin) → backend tolak 403 → UX membingungkan. Perbaiki: tombol aktif hanya bila `role_satisfies(user.role, chain[current_pending].required_role)`; bila tidak, tampilkan "Menunggu {label level} ({required_role})".
-  3. Tampilkan progres "Tingkat X dari Y" + timeline `approved_level` (sudah di-push backend).
-- **Setelah selesai:** screenshot verifikasi → lalu `testing_agent_v3` E2E (skenario: manager approve L1 → PO tetap waiting di L2 → admin approve L2 → PO `pending` + inbound task; SoD: pembuat tak bisa approve; non-eligible role → tombol non-aktif).
+### 🟠 P1-C — [DONE ✅ Sesi #042] Frontend Multi-Level Approval
+- **File:** `/app/frontend/src/features/purchasing/PurchaseApprovalView.jsx` (419 baris).
+- **Selesai:** (1) render `approval_chain[]` sebagai stepper per-tingkat (L1 Manager ✓ / L2 Direksi ⏳) + nama approver + tanggal; (2) tombol Setujui **role-aware** via `roleSatisfies(user.role, pendingLevel.required_role)` + cek SoD (pembuat tak bisa approve) → bila tak memenuhi tampil kunci "Menunggu {role}"; (3) progres "Tingkat X dari Y" + banner alasan. Backward-compatible untuk PO lama tanpa chain (sintesis 1 tingkat).
+- **Demo data seed:** PO-00010 (2-tingkat, keduanya pending) & PO-00011 (L1 approved manager, L2 admin pending).
+- **Bukti:** testing_agent iter_33 — backend 13/13, frontend 100%, 0 bug (1 React-key minor sudah diperbaiki di `ManagerDashboard.jsx`). E2E API: manager approve L1 → L2 → manager 403 → admin approve L2 → fully approved + inbound task. esbuild 0, ux_audit 0 ERROR, compliance 0 FAIL.
 
 ### 🟡 P2-D — [COSTING] HPP/COGS belum nyambung ke Sales (deferred, by design)
 - Semua 34 seed `inventory_rolls` punya `unit_cost = None`. `base_unit_cost` hanya terisi untuk GR baru. Landed-cost basis "nilai" jatuh ke fallback kuantitas untuk roll seed. COGS belum dipakai di margin Sales. **Sesuai KN_15 (HPP ditunda Fase 4)** — bukan bug, tapi catat untuk akurasi costing nanti.

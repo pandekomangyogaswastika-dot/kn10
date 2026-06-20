@@ -287,8 +287,8 @@ export default function ManagerDashboard({ token }) {
                 <div className="grid grid-cols-[1fr_80px_60px_80px_80px] gap-2 text-[10px] font-bold uppercase text-[#8E8E93] pb-1 border-b border-[#EFF0F2]">
                   <span>Produk</span><span>Gudang</span><span>On Hand</span><span>Hari</span><span>Nilai</span>
                 </div>
-                {aging.map((item) => (
-                  <div key={`${item.product_id}-${item.warehouse_id}`}
+                {aging.map((item, idx) => (
+                  <div key={`${item.product_id}-${item.warehouse_id}-${item.lot || item.owner_entity_id || idx}`}
                     className="grid grid-cols-[1fr_80px_60px_80px_80px] gap-2 text-[11px] py-1.5 border-b border-[#F5F5F7] last:border-0">
                     <div className="min-w-0">
                       <p className="font-semibold truncate">{item.product_name}</p>
