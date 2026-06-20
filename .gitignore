@@ -105,3 +105,4 @@ credentials.json
 backend/.env
 frontend/.env
 frontend/node_modules/.cache/default-development/5.pack
+frontend/node_modules/.cache/default-development/9.pack

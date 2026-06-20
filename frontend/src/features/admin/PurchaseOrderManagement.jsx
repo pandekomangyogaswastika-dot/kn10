@@ -151,19 +151,6 @@ export default function PurchaseOrderManagement({ user, onApprovePO }) {
     if (result) { setNotice("PO disetujui. Inbound task dibuat."); await fetchPOs(); await handleViewDetail(poId); }
   };
 
-  const handlePayPO = async (poId, payload) => {
-    try {
-      await axios.post(`${API}/purchase-orders/${poId}/pay`, payload);
-      setNotice("Pembayaran berhasil dicatat.");
-      await fetchPOs();
-      await handleViewDetail(poId);
-      return true;
-    } catch (e) {
-      setError(e.response?.data?.detail || "Gagal mencatat pembayaran.");
-      return false;
-    }
-  };
-
   const handleCloseShort = (poId) => {
     const po = pos.find((p) => p.id === poId);
     setConfirm({
@@ -269,7 +256,6 @@ export default function PurchaseOrderManagement({ user, onApprovePO }) {
           onClose={() => setSelectedPO(null)}
           onApprove={handleApprovePO}
           onCancel={handleCancelPO}
-          onPay={handlePayPO}
           onCloseShort={handleCloseShort}
         />
       </div>

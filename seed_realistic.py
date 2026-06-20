@@ -2118,31 +2118,17 @@ async def seed_purchase_returns():
 
 
 async def seed_po_payments():
-    """Depth #1C — backfill field keuangan + 1 contoh pembayaran PO (untuk AP demo)."""
-    # Default field keuangan untuk semua PO lama
+    """Backfill field keuangan default untuk PO lama.
+
+    P0-B (SSOT AP): pembayaran tidak lagi dicatat di level PO. Hutang & pembayaran
+    supplier dikelola via Vendor Bill (menu "Tagihan Supplier"). Maka demo
+    pembayaran PO-level lama DIHAPUS; PO-00002 tampil sebagai PO selesai yang
+    siap ditagih lewat Vendor Bill.
+    """
     await db.purchase_orders.update_many(
         {"amount_paid": {"$exists": False}},
         {"$set": {"amount_paid": 0.0, "returned_amount": 0.0, "payment_status": "unpaid", "payments": []}})
-    # PO-00002 dibayar lunas (kas besar keluar)
-    po2 = await db.purchase_orders.find_one({"id": "po_002"}, {"_id": 0})
-    if po2:
-        total = sum(float(it.get("quantity", 0)) * float(it.get("price", 0)) for it in po2.get("items", []))
-        cash_count = await db.cash_transactions.count_documents({})
-        cash = {"id": new_id("cash"), "number": f"CASH-{cash_count + 1:05d}",
-                "cash_type": "kas_besar", "direction": "out", "amount": round(total, 2),
-                "category": "pembelian", "description": "Pembayaran PO-00002 — NTT Weaving Co (transfer)",
-                "entity_id": "all", "ref_type": "purchase_order", "ref_id": "po_002",
-                "txn_date": ago(days=25), "status": "posted", "created_by": "Admin",
-                "created_at": ago(days=25), "updated_at": ago(days=25)}
-        await db.cash_transactions.insert_one(cash)
-        payment = {"id": new_id("pay"), "amount": round(total, 2), "method": "transfer",
-                   "cash_txn_id": cash["id"], "cash_txn_number": cash["number"], "cash_type": "kas_besar",
-                   "notes": "Pelunasan penuh", "paid_by": "Admin", "paid_at": ago(days=25)}
-        await db.purchase_orders.update_one(
-            {"id": "po_002"},
-            {"$set": {"amount_paid": round(total, 2), "total_amount": round(total, 2),
-                      "outstanding": 0.0, "payment_status": "paid", "payments": [payment]}})
-    print("✅ PO payments backfilled (PO-00002 lunas)")
+    print("✅ PO financial fields backfilled (pembayaran via Vendor Bill / SSOT)")
 
 
 async def seed_requisitions():

@@ -471,58 +471,18 @@ async def get_purchase_order(po_id: str, request: Request) -> Dict[str, Any]:
 
 @router.post("/purchase-orders/{po_id}/pay")
 async def pay_purchase_order(po_id: str, payload: POPaymentCreate, request: Request) -> Dict[str, Any]:
-    """Depth 1C — bayar PO (kas keluar) → catat cash_transaction + update AP."""
-    actor = await require_permission(request, "purchase_order", "update")
-    po = await db.purchase_orders.find_one({"id": po_id}, {"_id": 0})
-    if not po:
-        raise HTTPException(status_code=404, detail="Purchase Order tidak ditemukan")
-    if po.get("status") in ("cancelled", "rejected", "waiting_approval"):
-        raise HTTPException(status_code=400, detail=f"PO status '{po.get('status')}' tidak bisa dibayar")
-    amount = round(float(payload.amount or 0), 2)
-    if amount <= 0:
-        raise HTTPException(status_code=400, detail="Nominal pembayaran harus > 0")
-    fin = _po_financials(po)
-    if amount > fin["outstanding"] + 0.01:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Pembayaran ({amount}) melebihi sisa hutang ({fin['outstanding']}).")
+    """P0-B (SSOT AP) — Pembayaran PO DINONAKTIFKAN.
 
-    # Catat kas keluar
-    if payload.cash_type == "kas_besar":
-        cash_entity = "all"
-    else:
-        cash_entity = payload.entity_id or po.get("entity_id") or DEFAULT_ENTITY_ID
-    cash_doc = {
-        "id": new_id("cash"), "number": await next_doc_number("cash_transactions", "number", "CASH-"),
-        "cash_type": payload.cash_type, "direction": "out", "amount": amount,
-        "category": "pembelian",
-        "description": f"Pembayaran {po.get('po_number')} — {po.get('supplier_name','')} ({payload.method})",
-        "entity_id": cash_entity, "ref_type": "purchase_order", "ref_id": po_id,
-        "txn_date": payload.paid_at or now_iso(), "status": "posted",
-        "created_by": actor["name"], "created_at": now_iso(), "updated_at": now_iso(),
-    }
-    await db.cash_transactions.insert_one(cash_doc)
-
-    payment = {
-        "id": new_id("pay"), "amount": amount, "method": payload.method,
-        "cash_txn_id": cash_doc["id"], "cash_txn_number": cash_doc["number"],
-        "cash_type": payload.cash_type, "notes": payload.notes,
-        "paid_by": actor["name"], "paid_at": payload.paid_at or now_iso(),
-    }
-    await db.purchase_orders.update_one(
-        {"id": po_id},
-        {"$inc": {"amount_paid": amount}, "$push": {
-            "payments": payment,
-            "timeline": timeline_entry(
-                "paid", "Pembayaran dicatat", actor["name"],
-                f"Rp {amount:,.0f} via {payload.method} ({payload.cash_type})")},
-         "$set": {"updated_at": now_iso()}})
-    await recompute_po_payment_status(po_id)
-    await audit(actor["name"], "po_payment", "purchase_order", po_id,
-                {"po_number": po.get("po_number"), "amount": amount, "cash": cash_doc["number"]})
-    updated = await db.purchase_orders.find_one({"id": po_id}, {"_id": 0})
-    updated["financials"] = _po_financials(updated)
-    return safe_doc(updated)
+    Hutang (AP) & pembayaran ke supplier kini dikelola SATU PINTU melalui
+    Vendor Bill (menu "Tagihan Supplier"). Endpoint ini sengaja diblokir agar
+    tidak terjadi double-count hutang / kas keluar ganda dengan Vendor Bill.
+    """
+    await require_permission(request, "purchase_order", "update")
+    raise HTTPException(
+        status_code=400,
+        detail=("Pembayaran langsung di PO dinonaktifkan. Hutang & pembayaran supplier "
+                "dikelola via Tagihan Supplier (Vendor Bill). Buat/posting Vendor Bill "
+                "untuk PO ini, lalu bayar dari sana."))
 
 
 @router.post("/purchase-orders/{po_id}/close")

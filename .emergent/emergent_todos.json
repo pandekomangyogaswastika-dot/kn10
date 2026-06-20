@@ -1,30 +1,26 @@
 [
   {
-    "content": "Setup: copy repo KN10, install deps, run load_context, read Tier-0 + handoff",
+    "content": "Setup + Baseline + P0-A + P1-C (done, verified iter_33 100%)",
     "status": "completed"
   },
   {
-    "content": "Baseline: seed_reset (119/0/0), verify app loads + login works",
+    "content": "P0-B: Map all references",
     "status": "completed"
   },
   {
-    "content": "P0-A: Fix number generators → max-based (deletion-safe). POC 12/12, gates 119/0/0",
+    "content": "P0-B Backend: PO /pay disabled → HTTP 400 redirect to Vendor Bill; seed legacy PO payment removed",
     "status": "completed"
   },
   {
-    "content": "P1-C: Frontend Multi-Level Approval — chain stepper, role-aware buttons, level progress (verified UI + API E2E flow). Added multi-level demo POs to seed",
+    "content": "P0-B Frontend: removed 'Hutang Supplier (AP)' nav + PayablesView; PODetailPanel → 'Status Penagihan (Vendor Bill)' + note, no Bayar PO btn",
     "status": "completed"
   },
   {
-    "content": "testing_agent_v3 E2E for P0-A + P1-C",
+    "content": "P0-B: testing_agent_v3 E2E (AP unification + Vendor Bill regression)",
     "status": "in_progress"
   },
   {
-    "content": "P0-B: Resolve AP dualism (owner decision needed) — report before this",
-    "status": "pending"
-  },
-  {
-    "content": "Update plan.md + SESSION_HANDOFF.md",
+    "content": "Update plan.md + SESSION_HANDOFF.md, finish summary",
     "status": "pending"
   }
 ]

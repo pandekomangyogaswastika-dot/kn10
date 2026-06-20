@@ -1,23 +1,19 @@
-import { useState } from "react";
-import { FileText, CheckCircle, XCircle, AlertCircle, Wallet, RotateCcw, Ban } from "lucide-react";
+import { FileText, CheckCircle, XCircle, AlertCircle, Receipt, Ban } from "lucide-react";
 import { formatCurrency } from "../../../utils/formatters";
-import { getStatusBadge, getPaymentBadge } from "./poUtils";
+import { getStatusBadge } from "./poUtils";
 import POTimeline from "./POTimeline";
 import PODeviationBanner from "./PODeviationBanner";
-import KNSelect from "../../../components/KNSelect";
 
 /**
- * PODetailPanel — panel kanan detail PO (Depth #1: progress, AP/pembayaran, tutup-kurang, retur).
- * Props: po, currentUser, onClose, onApprove, onCancel, onPay, onCloseShort
+ * PODetailPanel — panel kanan detail PO (progress terima, status penagihan, retur).
+ *
+ * P0-B (SSOT AP): PO BUKAN lagi jalur hutang/pembayaran. Hutang & pembayaran
+ * supplier dikelola SATU PINTU di menu "Tagihan Supplier" (Vendor Bill). Panel
+ * ini hanya menampilkan STATUS PENAGIHAN informasional + ajakan buat Vendor Bill.
+ *
+ * Props: po, currentUser, onClose, onApprove, onCancel, onCloseShort
  */
-export default function PODetailPanel({ po, currentUser, onClose, onApprove, onCancel, onPay, onCloseShort }) {
-  const [showPay, setShowPay] = useState(false);
-  const [payAmount, setPayAmount] = useState("");
-  const [payType, setPayType] = useState("kas_besar");
-  const [payMethod, setPayMethod] = useState("transfer");
-  const [payError, setPayError] = useState("");
-  const [busy, setBusy] = useState(false);
-
+export default function PODetailPanel({ po, currentUser, onClose, onApprove, onCancel, onCloseShort }) {
   if (!po) {
     return (
       <div className="section-card flex items-center justify-center min-h-[200px] border-dashed">
@@ -30,33 +26,28 @@ export default function PODetailPanel({ po, currentUser, onClose, onApprove, onC
   }
 
   const canManage = ["admin", "manager"].includes(currentUser?.role);
-  const fin = po.financials || {};
   const goodsReceived = ["receiving", "partial", "completed", "closed_short"].includes(po.status);
 
-  async function submitPay() {
-    const amt = Number(payAmount);
-    if (!amt || amt <= 0) { setPayError("Nominal harus lebih dari 0."); return; }
-    setPayError("");
-    setBusy(true);
-    try {
-      const ok = await onPay(po.id, { amount: amt, cash_type: payType, method: payMethod });
-      if (ok) { setShowPay(false); setPayAmount(""); }
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function doApprove() {
-    setBusy(true);
-    try { await onApprove(po.id); } finally { setBusy(false); }
-  }
+  // Ringkasan penagihan (di-maintain Vendor Bill via sync_po_billing).
+  const grand = Number(po.grand_total ?? po.total_amount ?? 0);
+  const billed = Number(po.billed_total ?? 0);
+  const unbilled = Number(po.unbilled_total ?? Math.max(grand - billed, 0));
+  const billCount = Number(po.bill_count ?? 0);
+  const billState = billed <= 0.01 ? { label: "Belum Ditagih", cls: "bg-red-50 text-red-600 border border-red-200" }
+    : unbilled <= 0.01 ? { label: "Tertagih Penuh", cls: "bg-green-50 text-green-700 border border-green-200" }
+    : { label: "Tertagih Sebagian", cls: "bg-amber-50 text-amber-700 border border-amber-200" };
 
   return (
     <div className="section-card self-start" data-testid="po-detail-panel">
       <div className="section-head">
         <div className="min-w-0">
           <p className="text-[10px] font-bold uppercase text-[#0058CC]">{po.po_number}</p>
-          <div className="mt-0.5 flex items-center gap-1">{getStatusBadge(po.status)}{goodsReceived && getPaymentBadge(fin.payment_status)}</div>
+          <div className="mt-0.5 flex items-center gap-1">
+            {getStatusBadge(po.status)}
+            {goodsReceived && (
+              <span data-testid="po-billing-badge" className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${billState.cls}`}>{billState.label}</span>
+            )}
+          </div>
         </div>
         <button className="icon-button" onClick={onClose}><XCircle size={14} /></button>
       </div>
@@ -76,7 +67,7 @@ export default function PODetailPanel({ po, currentUser, onClose, onApprove, onC
           </div>
         </div>
 
-        {/* Items with receive progress (Depth 1A) */}
+        {/* Items with receive progress */}
         <div className="rounded-md border border-[#EFF0F2] overflow-hidden">
           <div className="px-2.5 py-1.5 bg-[#FAFBFC] text-[10px] font-bold uppercase text-[#6B6B73] border-b border-[#EFF0F2]">
             Items & Progress Terima ({po.items?.length || 0})
@@ -121,23 +112,28 @@ export default function PODetailPanel({ po, currentUser, onClose, onApprove, onC
           </div>
         )}
 
-        {/* Financial summary (Depth 1C) */}
+        {/* Status Penagihan — SSOT hutang ada di Vendor Bill (Tagihan Supplier) */}
         {goodsReceived && (
-          <div data-testid="po-financials" className="rounded-md border border-[#EFF0F2] overflow-hidden text-[11.5px]">
-            <div className="px-2.5 py-1.5 bg-[#FAFBFC] text-[10px] font-bold uppercase text-[#6B6B73] border-b border-[#EFF0F2]">Keuangan / Hutang (AP)</div>
+          <div data-testid="po-billing-summary" className="rounded-md border border-[#EFF0F2] overflow-hidden text-[11.5px]">
+            <div className="px-2.5 py-1.5 bg-[#FAFBFC] text-[10px] font-bold uppercase text-[#6B6B73] border-b border-[#EFF0F2]">
+              Status Penagihan (Vendor Bill)
+            </div>
             <div className="p-2.5 space-y-1">
-              <Row label="Total Tagihan" value={formatCurrency(fin.total_amount)} />
-              {fin.returned_amount > 0 && <Row label="Retur (Nota Debit)" value={`- ${formatCurrency(fin.returned_amount)}`} tone="text-amber-700" />}
-              <Row label="Sudah Dibayar" value={formatCurrency(fin.amount_paid)} tone="text-green-700" />
+              <Row label="Nilai PO (Grand Total)" value={formatCurrency(grand)} />
+              <Row label={`Sudah Ditagih${billCount > 0 ? ` (${billCount} bill)` : ""}`} value={formatCurrency(billed)} tone="text-green-700" />
               <div className="flex justify-between border-t border-[#EFF0F2] pt-1 mt-1">
-                <span className="font-bold">Sisa Hutang</span>
-                <span data-testid="po-outstanding" className="font-bold tabular-nums text-red-600">{formatCurrency(fin.outstanding)}</span>
+                <span className="font-bold">Belum Ditagih</span>
+                <span data-testid="po-unbilled" className="font-bold tabular-nums text-amber-700">{formatCurrency(unbilled)}</span>
+              </div>
+              <div className="flex items-start gap-1.5 mt-1.5 rounded-md border border-[#D6E4FF] bg-[#F5F9FF] px-2 py-1.5 text-[10.5px] text-[#0058CC]">
+                <Receipt size={12} className="mt-0.5 shrink-0" />
+                <span>Hutang &amp; pembayaran supplier dikelola di menu <b>Tagihan Supplier</b> (Vendor Bill). Buat Vendor Bill dari menu tersebut untuk menagih &amp; membayar PO ini.</span>
               </div>
             </div>
           </div>
         )}
 
-        {/* Returns linked (Depth 1B) */}
+        {/* Returns linked */}
         {po.returns?.length > 0 && (
           <div className="rounded-md border border-[#EFF0F2] overflow-hidden">
             <div className="px-2.5 py-1.5 bg-[#FAFBFC] text-[10px] font-bold uppercase text-[#6B6B73] border-b border-[#EFF0F2]">Retur Beli</div>
@@ -163,45 +159,18 @@ export default function PODetailPanel({ po, currentUser, onClose, onApprove, onC
           </div>
         )}
 
-        {/* Depth #3 — Riwayat / timeline approval PO */}
+        {/* Riwayat / timeline approval PO */}
         <POTimeline po={po} />
-
-        {/* Payment form */}
-        {showPay && (
-          <div data-testid="po-pay-form" className="rounded-md border border-[#D6E4FF] bg-[#F5F9FF] p-2.5 space-y-2">
-            <p className="text-[11px] font-bold text-[#0058CC]">Catat Pembayaran</p>
-            {payError && <p data-testid="po-pay-error" className="text-[10.5px] text-[#C62828]">{payError}</p>}
-            <div>
-              <label className="block text-[10px] font-semibold text-[#6B6B73] mb-0.5">Nominal (sisa {formatCurrency(fin.outstanding)})</label>
-              <input data-testid="po-pay-amount" type="number" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} className="field" placeholder="0" />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <KNSelect data-testid="po-pay-cashtype" value={payType} onValueChange={setPayType} className="field"
-                options={[{ value: "kas_besar", label: "Kas Besar" }, { value: "kas_kecil", label: "Kas Kecil" }]} />
-              <KNSelect data-testid="po-pay-method" value={payMethod} onValueChange={setPayMethod} className="field"
-                options={[{ value: "transfer", label: "Transfer" }, { value: "tunai", label: "Tunai" }, { value: "giro", label: "Giro" }]} />
-            </div>
-            <div className="flex gap-2">
-              <button data-testid="po-pay-submit" onClick={submitPay} disabled={busy} className="flex-1 primary-button justify-center">{busy ? "Memproses…" : "Bayar"}</button>
-              <button onClick={() => setShowPay(false)} disabled={busy} className="secondary-button">Batal</button>
-            </div>
-          </div>
-        )}
 
         {/* Actions */}
         <div className="flex flex-col gap-1.5">
           {po.status === "waiting_approval" && canManage && (
-            <button data-testid="approve-po-button" onClick={doApprove} disabled={busy} className="primary-button justify-center">
-              <CheckCircle size={13} /> {busy ? "Memproses…" : "Approve PO"}
-            </button>
-          )}
-          {goodsReceived && fin.outstanding > 0 && canManage && (
-            <button data-testid="pay-po-button" disabled={busy} onClick={() => { setShowPay(!showPay); setPayAmount(String(fin.outstanding || "")); }} className="primary-button justify-center">
-              <Wallet size={13} /> Bayar PO
+            <button data-testid="approve-po-button" onClick={() => onApprove(po.id)} className="primary-button justify-center">
+              <CheckCircle size={13} /> Approve PO
             </button>
           )}
           {["receiving", "partial", "pending"].includes(po.status) && canManage && (
-            <button data-testid="close-po-button" disabled={busy} onClick={() => onCloseShort(po.id)} className="secondary-button justify-center">
+            <button data-testid="close-po-button" onClick={() => onCloseShort(po.id)} className="secondary-button justify-center">
               <Ban size={13} /> Tutup PO (Kurang)
             </button>
           )}
@@ -213,7 +182,7 @@ export default function PODetailPanel({ po, currentUser, onClose, onApprove, onC
             </button>
           )}
           {["waiting_approval", "pending"].includes(po.status) && canManage && (
-            <button data-testid="cancel-po-button" disabled={busy} onClick={() => onCancel(po.id)} className="danger-button justify-center">
+            <button data-testid="cancel-po-button" onClick={() => onCancel(po.id)} className="danger-button justify-center">
               Batalkan PO
             </button>
           )}

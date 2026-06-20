@@ -318,9 +318,79 @@ def main():
         runner.log(f"  Status: {po_011_final.get('status')}", "PASS")
         runner.log(f"  Approval status: {po_011_final.get('approval_status')}", "PASS")
 
+    # ========== P0-B: SSOT AP (Vendor Bill) ==========
+    print("\n" + "="*70)
+    print("PHASE 4: P0-B - SSOT AP (VENDOR BILL UNIFICATION)")
+    print("="*70)
+    
+    runner.log("Testing P0-B: PO payment endpoint should be blocked...", "INFO")
+    
+    # Test that POST /api/purchase-orders/{id}/pay returns 400
+    runner.log("(a) Attempting to pay PO directly (should return 400)...", "INFO")
+    success, pay_response = runner.test(
+        "POST /api/purchase-orders/po_009/pay (should be blocked)",
+        "POST",
+        "purchase-orders/po_009/pay",
+        400,
+        data={"amount": 1000000, "payment_method": "transfer", "notes": "Test payment"},
+        token=runner.admin_token
+    )
+    
+    if success:
+        detail = pay_response.get('detail', '')
+        if 'Vendor Bill' in detail or 'Tagihan Supplier' in detail:
+            runner.log(f"  ✓ Correct error message directing to Vendor Bill", "PASS")
+        else:
+            runner.log(f"  ⚠ Error message doesn't mention Vendor Bill: {detail}", "WARN")
+    
+    # Test Vendor Bill endpoints (SSOT) are healthy
+    runner.log("(b) Testing Vendor Bill endpoints (SSOT)...", "INFO")
+    
+    success, bills = runner.test(
+        "GET /api/vendor-bills (SSOT endpoint)",
+        "GET",
+        "vendor-bills",
+        200,
+        token=runner.admin_token
+    )
+    
+    if success:
+        runner.log(f"  Vendor bills endpoint healthy (found {len(bills)} bills)", "PASS")
+    
+    success, summary = runner.test(
+        "GET /api/vendor-bills/payables/summary",
+        "GET",
+        "vendor-bills/payables/summary",
+        200,
+        token=runner.admin_token
+    )
+    
+    if success:
+        runner.log(f"  Payables summary endpoint healthy", "PASS")
+        if 'total_outstanding' in summary:
+            runner.log(f"  Total outstanding AP: {summary.get('total_outstanding', 0)}", "INFO")
+    
+    # Test PO list still works and has billing summary fields
+    runner.log("(c) Testing PO list has billing summary fields...", "INFO")
+    success, pos_check = runner.test(
+        "GET /api/purchase-orders (check billing fields)",
+        "GET",
+        "purchase-orders",
+        200,
+        token=runner.admin_token
+    )
+    
+    if success and len(pos_check) > 0:
+        sample_po = pos_check[0]
+        has_billing = 'billed_total' in sample_po or 'unbilled_total' in sample_po
+        if has_billing:
+            runner.log(f"  ✓ PO has billing summary fields", "PASS")
+        else:
+            runner.log(f"  ⚠ PO missing billing summary fields (may be OK if no bills yet)", "WARN")
+
     # ========== P1-C: SoD (Segregation of Duties) ==========
     print("\n" + "="*70)
-    print("PHASE 4: P1-C - SEGREGATION OF DUTIES (SoD)")
+    print("PHASE 5: P1-C - SEGREGATION OF DUTIES (SoD)")
     print("="*70)
     
     runner.log("Testing SoD: creator cannot approve their own PO...", "INFO")

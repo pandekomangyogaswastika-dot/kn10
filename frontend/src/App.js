@@ -36,7 +36,6 @@ import VendorBillsView from "./features/purchasing/VendorBillsView";
 import LandedCostView from "./features/purchasing/LandedCostView";
 import InputTaxView from "./features/purchasing/InputTaxView";
 import RFQView from "./features/purchasing/RFQView";
-import PayablesView from "./features/purchasing/PayablesView";
 import PurchaseRequisitions from "./features/purchasing/PurchaseRequisitions";
 import ReorderSuggestions from "./features/purchasing/ReorderSuggestions";
 import {
@@ -243,7 +242,6 @@ function App() {
             {activeView === "landed-cost" && <LandedCostView currentUser={user} selectedEntity={selectedEntity} />}
             {activeView === "input-tax" && <InputTaxView currentUser={user} selectedEntity={selectedEntity} />}
             {activeView === "rfq" && <RFQView currentUser={user} selectedEntity={selectedEntity} />}
-            {activeView === "payables" && <PayablesView currentUser={user} selectedEntity={selectedEntity} />}
             {activeView === "purchase-requisitions" && <PurchaseRequisitions currentUser={user} selectedEntity={selectedEntity} />}
             {activeView === "reorder" && <ReorderSuggestions currentUser={user} selectedEntity={selectedEntity} />}
             {activeView === "operations" && <OperationsView data={data} movements={movements} tasks={tasks} entities={entities} selectedEntity={selectedEntity} onGenerateLabel={generateLabel} onCreateInboundTask={createInboundTask} onCreateOutboundTasks={createOutboundTasks} onScanTask={scanTask} onAdvanceTask={advanceTask} onShowDetail={setActiveDetail} token={token} user={user} defaultTab={wmsInitialTab} />}
