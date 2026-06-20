@@ -8,7 +8,7 @@
     "status": "completed"
   },
   {
-    "content": "Frontend: PO unit picker + hint; GR catch-weight modal (extracted GRCatchWeightModal); RollsTable weight col; seed GSM/width",
+    "content": "Frontend: PO unit picker + hint; GR catch-weight modal; RollsTable weight col; seed GSM/width",
     "status": "completed"
   },
   {
@@ -16,11 +16,11 @@
     "status": "completed"
   },
   {
-    "content": "testing_agent_v3 E2E (catch-weight PO per-kg → GR weight → rolls; meter regression)",
-    "status": "in_progress"
+    "content": "testing_agent_v3 E2E (BE 9/9) + manual UI verify (PO picker + GR modal)",
+    "status": "completed"
   },
   {
-    "content": "Update plan.md + SESSION_HANDOFF.md",
-    "status": "pending"
+    "content": "Update plan.md + SESSION_HANDOFF.md (Session #043)",
+    "status": "completed"
   }
 ]

@@ -56,14 +56,15 @@ PO · Purchase Requisition · RFQ/Quotation · Saran Reorder · Pemasok · Appro
 - List endpoint pakai cap `.to_list(200..2000)` & aggregasi payables menghitung `_po_financials`/`bill_financials` per-dokumen di Python (loop) — **aman di data sekarang** (PO 11, rolls 34). Untuk skala ribuan: pertimbangkan index (`entity_id`, `status`, `supplier_id`, `po_number`/`bill_number`) + paginasi server-side + pra-hitung agregat. Tidak ada N+1 query berat pada path purchasing yang ditemukan.
 
 ## 4) Backlog (disetujui owner, urut)
-- **P1:** Catch-weight / Dual-UoM pembelian (beli kg, terima kg aktual + konversi).
+- ✅ ~~**P1:** Catch-weight / Dual-UoM pembelian~~ — SELESAI Sesi #043 (Fase 8).
 - **P2:** Phase 7.2 PO Amendment / Version History · Blanket/Contract PO (call-off) · Kirim PO PDF ke supplier (email) · Multi-currency/FX · Budget/Commitment Control.
 
 ## 5) Rekomendasi URUTAN aksi agent berikutnya
 - ✅ ~~1. Bersihkan state + perbaiki generator nomor → max-based (P0-A)~~ — SELESAI Sesi #042.
 - ✅ ~~2. Selesaikan Frontend Phase 7.1 (P1-C)~~ — SELESAI Sesi #042.
 - ✅ ~~3. Putuskan & rapikan AP dualism (P0-B)~~ — SELESAI Sesi #042 (unifikasi ke Vendor Bill/SSOT).
-- **BERIKUTNYA:** backlog §4 — **Phase 7.2 PO Amendment / Version History** (P2) atau **Catch-weight / Dual-UoM** (P1), sesuai prioritas owner.
+- ✅ ~~4. Catch-weight / Dual-UoM (P1)~~ — SELESAI Sesi #043 (Fase 8).
+- **BERIKUTNYA:** backlog §4 (P2) — **Phase 7.2 PO Amendment / Version History**, lalu Blanket/Contract PO, Kirim PO PDF, Multi-currency/FX.
 > Setiap perubahan WAJIB lewat gate: `seed_reset.sh` → `health_check.py` → `verify_data_integrity.py` → `verify_api_contract.py` → `ux_audit.py` → `check_nav_map.py` + esbuild. Jangan rename `data-testid` yang sudah ada. Jaga invarian (`total_amount` GROSS, breakdown pajak di field terpisah).
 
 ## 6) Berkas referensi inti

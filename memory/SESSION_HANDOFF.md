@@ -1,5 +1,37 @@
 # SESSION HANDOFF — Kain Nusantara (KN10)
 
+## Session #043 — 20 Jun 2026 — Fase 8: Catch-weight / Dual-UoM pembelian ✅
+
+> Backlog §4 (P1). Keputusan owner: faktor default per-produk + override AKTUAL saat GR; PO bisa dibeli per kg ATAU meter per item.
+
+### Konsep
+- Konversi kg ↔ base(meter): `kg per 1 meter = kg_per_meter (eksplisit) ATAU gramasi(gsm) × lebar(m) / 1000`.
+- PO per item: field `unit` = "meter" | "kg" (harga per unit order). PO item simpan `quantity_base` (meter-ekuivalen) utk perencanaan stok.
+- Catch-weight di GR: tiap roll fisik dicatat panjang (m) + berat (kg) AKTUAL. Bila salah satu kosong → diturunkan dari faktor; bila keduanya diisi → keduanya jadi aktual (override). Roll simpan `weight_kg`.
+
+### Backend
+- `services/uom_service.py`: + `product_kg_per_meter()`, + `resolve_roll_measures()` (resolusi panjang/berat per roll, semua kasus), `_catch_weight` pakai faktor eksplisit→turunan.
+- `schemas.py`: `GRRollLine.weight` (kg, opsional), `ProductPayload.kg_per_meter`.
+- `routers/inbound_receiving.py complete`: validasi Σ unit-aware (berat utk PO kg / panjang utk PO meter, tol ±2%), simpan `weight_kg` + `weight_unit` di roll & movement.
+- `routers/purchase_orders.py create`: hitung `quantity_base` per item (konversi catch-weight; fallback = quantity).
+- `routers/products.py update`: whitelist + `kg_per_meter`. `services/fulfillment_service.py`: on_order pakai `quantity_base` (proporsional) → tak campur kg ke balance meter.
+
+### Frontend
+- `features/admin/po/POCreateForm.jsx`: dropdown satuan per item (meter | kg bila produk catch-weight) + hint konversi live (`po-uom-hint`).
+- `features/wms/InboundScanInterface.jsx` + `inbound/GRCatchWeightModal.jsx` (komponen baru): modal entri roll saat Complete — panjang + berat per roll, auto-derive pasangan kg↔m (override-able), validasi Σ, multi-roll.
+- `features/wms/inventory/RollsTable.jsx`: + kolom **Berat (kg)** (catch-weight).
+- Product master (`AdminView`) sudah punya input gramasi/lebar + hint kg/m (dari Sub-fase 1.13).
+- Seed: semua produk diberi gramasi/lebar (kg/m 0.138–0.294) → catch-weight demonstrable.
+
+### Verifikasi
+- POC mandiri `test_catch_weight_poc.py` **28/28** (fungsi murni + E2E API: produk→PO per-kg→GR berat aktual→roll.weight_kg+meter+balance+received_qty).
+- `testing_agent_v3` iter_35: **backend 9/9 PASS**. Frontend: product master OK; sesi browser timeout sebelum modul lain — diverifikasi manual via screenshot: PO unit picker (meter|kg) + hint konversi ✓; GR catch-weight modal (auto-derive 100kg→340.14m, validasi ✓) ✓.
+- Gate HIJAU: seed_reset **119/0/0**, verify_api_contract 0/0, ux_audit 0 ERROR, validate_compliance 0 FAIL (refactor GRCatchWeightModal → InboundScan 448 baris), check_nav_map PASS, esbuild 0.
+
+### Status: **Fase 8 (Catch-weight) TUNTAS.** Berikutnya (backlog §4, P2): Phase 7.2 PO Amendment / Version History.
+
+---
+
 ## Session #042 — 20 Jun 2026 — P0-A (nomor anti-duplikat) + P1-C (Approval Berjenjang FE) + P0-B (Unifikasi AP → SSOT Vendor Bill) ✅
 
 > Melanjutkan handoff Sesi #041 (review Pembelian). Tiga item ditutup sesuai urutan rekomendasi + keputusan owner.
