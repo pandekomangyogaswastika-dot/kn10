@@ -1,5 +1,31 @@
 # SESSION HANDOFF — Kain Nusantara (KN10)
 
+## Session #042 — 20 Jun 2026 — P0-A (nomor anti-duplikat) + P1-C (Approval Berjenjang FE) + P0-B (Unifikasi AP → SSOT Vendor Bill) ✅
+
+> Melanjutkan handoff Sesi #041 (review Pembelian). Tiga item ditutup sesuai urutan rekomendasi + keputusan owner.
+
+### P0-A — Generator nomor dokumen deletion-safe (RC-5)
+- Helper bersama `core_utils.next_doc_number(collection, field, prefix, width=5)` (max-based, aman walau ada dokumen terhapus) menggantikan SEMUA pola `count_documents()+1`: PO (`routers/purchase_orders.py`), PR→PO (`services/purchase_requisition_service.py`), RFQ-award→PO (`services/rfq_service.py`), SO (`routers/sales_orders.py`), TRF (`routers/transfers.py` ×2), SJ (`services/shipment_service.py`), FKT (`services/tax_invoice_service.py`), inline CASH (`purchase_orders.py`/`landed_cost.py`/`vendor_bills.py`).
+- Bukti: POC `test_number_series_poc.py` **12/12** (reproduksi tabrakan: count+1→PO-00012 DUPLIKAT vs next→PO-00013 AMAN). Real API create PO → PO-00010.
+
+### P1-C — Frontend Multi-Level Approval (Phase 7.1)
+- `features/purchasing/PurchaseApprovalView.jsx` (419 baris): stepper rantai approval per-tingkat (L1 Manager → L2 Direksi) + status/approver/tanggal; tombol Setujui **role-aware** (`roleSatisfies` + SoD) → terkunci "Menunggu {role}" bila tak memenuhi; progres "Tingkat X dari Y". Backward-compatible (PO tanpa chain → sintesis 1 tingkat).
+- Seed demo: PO-00010 (2-tingkat keduanya pending) & PO-00011 (L1 approved manager, L2 admin pending).
+- Fix minor: duplicate React key di `features/manager/ManagerDashboard.jsx`.
+
+### P0-B — Unifikasi AP → Vendor Bill sebagai SSOT (keputusan owner: 1.a / 2.b / 3.a)
+- BE: `POST /purchase-orders/{id}/pay` DIBLOKIR → `HTTP 400` + arahan ke Tagihan Supplier (cegah kas keluar ganda di sumber).
+- FE: menu `payables` "Hutang Supplier (AP)" + `PayablesView.jsx` DIHAPUS (navigationConfig PAGE_META+items, route+import App.js). `PurchaseOrderManagement` hapus `handlePayPO`/`onPay`. `PODetailPanel.jsx` ganti bagian Hutang/form bayar/tombol "Bayar PO" → **"Status Penagihan (Vendor Bill)"** (Nilai PO · Sudah Ditagih · Belum Ditagih) + catatan arahkan ke Tagihan Supplier; badge header = status penagihan.
+- Seed: demo pembayaran PO-level lama (PO-00002) dihapus dari `seed_po_payments` (cash 7→6).
+
+### Verifikasi
+- Gates HIJAU: seed_reset **119/0/0**, verify_api_contract **0/0** (122 path FE cocok), ux_audit **0 ERROR**, health 0 FAIL, endpoint sweep 5xx=0, check_nav_map PASS, validate_compliance **0 FAIL**, esbuild exit 0.
+- `testing_agent_v3`: iter_33 (P0-A+P1-C) BE 13/13 + FE 100%; iter_34 (P0-B) BE 17/17 + FE 100%. 0 bug kritikal.
+
+### Status: **P0-A, P1-C, P0-B TUNTAS.** Berikutnya (backlog §4 plan.md): Phase 7.2 PO Amendment / Version History (P2) atau Catch-weight / Dual-UoM (P1) — sesuai prioritas owner.
+
+---
+
 ## Session #040 — 20 Jun 2026 — Phase 6.2 P1: 4-Point Inspection + GSM/Lebar per-roll ✅
 
 > Item P1 kedua (setelah RFQ). Keputusan owner: inspeksi **saat QC** per roll; skor **4-point sederhana** (total poin defect); grade **configurable** (≤a_max=A/≤b_max=B/>b_max=C, default 20/40); GSM/lebar aktual **dicatat saja**; hasil **set grade** tanpa karantina otomatis.

@@ -16,11 +16,11 @@
     "status": "completed"
   },
   {
-    "content": "P0-B: testing_agent_v3 E2E (AP unification + Vendor Bill regression)",
-    "status": "in_progress"
+    "content": "P0-B: testing_agent_v3 E2E — iter_34 BE 17/17 + FE 100%",
+    "status": "completed"
   },
   {
-    "content": "Update plan.md + SESSION_HANDOFF.md, finish summary",
-    "status": "pending"
+    "content": "Update plan.md + SESSION_HANDOFF.md (Session #042)",
+    "status": "completed"
   }
 ]

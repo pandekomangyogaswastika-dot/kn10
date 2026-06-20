@@ -31,13 +31,13 @@ PO · Purchase Requisition · RFQ/Quotation · Saran Reorder · Pemasok · Appro
 - **Bukti:** POC `test_number_series_poc.py` **12/12** (reproduksi skenario hapus-tengah: count+1 → PO-00012 DUPLIKAT vs next_doc_number → PO-00013 AMAN). Real API: create PO → PO-00010 (max+1). Gate seed_reset **119/0/0**. testing_agent iter_33 backend 13/13.
 - Generator yang SUDAH aman sebelumnya (SUP/VB/RFQ#/PR#/FPM/LCV/CASH-helper) dibiarkan (lulus gate).
 
-### 🔴 P0-B — [INTEGRASI] Dualisme AP (potensi double-count hutang & kas) — MENUNGGU KEPUTUSAN OWNER
-- **Dua sistem AP berjalan paralel tanpa rekonsiliasi:**
-  - Menu **Hutang Supplier (AP)** = `/purchase-orders/payables/summary` + endpoint PO `/pay` → AP dihitung langsung dari `grand_total` PO (`_po_financials`).
-  - Menu **Tagihan Supplier** = `/vendor-bills/payables/summary` + endpoint bill `/pay` → AP dari Vendor Bill posted (`bill_financials`).
-- **Masalah:** bayar Vendor Bill TIDAK mengurangi `outstanding` PO, dan payables PO TIDAK mengurangi nilai yang sudah ditagih bill. `sync_po_billing` hanya menulis `billed_total`/`unbilled_total` (informasional) tapi `_po_financials` mengabaikannya. → Satu PO bisa tampil outstanding penuh di **Hutang Supplier (AP)** sekaligus di **Tagihan Supplier**; keduanya juga bisa mencatat `cash_transaction` keluar terpisah → **hutang & kas keluar dobel**.
-- **Catatan:** belum termanifestasi di data seekarang (vendor_bills=0). Tapi arsitektur mengizinkannya begitu Vendor Bill dipakai.
-- **Rekomendasi (perlu keputusan owner):** Jadikan Vendor Bill satu-satunya sumber AP. Pilihan: (a) `_po_financials`/payables PO menampilkan **hanya unbilled** (= grand_total − billed_total) + sembunyikan tombol PO `/pay` bila sudah ada bill; atau (b) retire menu "Hutang Supplier (AP)" PO-based, arahkan ke Vendor Bill. Tegaskan PO `/pay` hanya untuk DP/uang muka (kalau memang dibutuhkan) dengan label jelas.
+### ✅ P0-B — [RESOLVED ✅ Sesi #042] Dualisme AP → UNIFIKASI ke Vendor Bill (SSOT)
+- **Keputusan owner:** (1.a) Vendor Bill = SATU-SATUNYA sumber hutang & pembayaran supplier; (2.b) menu PO-based "Hutang Supplier (AP)" DIHAPUS total; (3.a) tidak ada bayar DP/uang muka langsung di PO.
+- **Implementasi:**
+  - BE: endpoint `POST /purchase-orders/{id}/pay` DIBLOKIR → `HTTP 400` + pesan arahkan ke Tagihan Supplier (Vendor Bill). Mencegah kas keluar ganda di sumbernya. `_po_financials`/`payables/summary` dibiarkan tapi tidak lagi di-surface (tak ada caller FE).
+  - FE: item nav `payables` + `PayablesView.jsx` DIHAPUS (PAGE_META + items + route + import di App.js). `PurchaseOrderManagement` hapus `handlePayPO`/`onPay`. `PODetailPanel` ganti bagian "Keuangan/Hutang (AP)" + form bayar + tombol "Bayar PO" → bagian **"Status Penagihan (Vendor Bill)"** (Nilai PO · Sudah Ditagih · Belum Ditagih) + catatan arahkan ke menu Tagihan Supplier. Badge header → status penagihan (Belum/Sebagian/Penuh).
+  - Seed: demo pembayaran PO-level lama (PO-00002) DIHAPUS dari `seed_po_payments` (sekarang hanya backfill field; pembayaran via Vendor Bill).
+- **Bukti:** testing_agent iter_34 — backend 17/17, frontend 100%. `/pay` → 400; menu AP hilang (admin+manager); PODetailPanel tampil "Status Penagihan"; Vendor Bill (SSOT) sehat; regresi P1-C OK. Gate 119/0/0, esbuild 0, api_contract 0/0, nav_map PASS.
 
 ### 🟠 P1-C — [DONE ✅ Sesi #042] Frontend Multi-Level Approval
 - **File:** `/app/frontend/src/features/purchasing/PurchaseApprovalView.jsx` (419 baris).
@@ -60,10 +60,10 @@ PO · Purchase Requisition · RFQ/Quotation · Saran Reorder · Pemasok · Appro
 - **P2:** Phase 7.2 PO Amendment / Version History · Blanket/Contract PO (call-off) · Kirim PO PDF ke supplier (email) · Multi-currency/FX · Budget/Commitment Control.
 
 ## 5) Rekomendasi URUTAN aksi agent berikutnya
-1. **Bersihkan state** (`seed_reset.sh`) + perbaiki generator nomor PO/PR/RFQ→PO ke max-based → tutup P0-A (cegah duplikat nomor). 
-2. **Selesaikan Frontend Phase 7.1** (P1-C) — task yang di-pause; backend sudah siap.
-3. **Putuskan & rapikan AP dualism** (P0-B) bersama owner (butuh keputusan desain).
-4. Lanjut backlog: Phase 7.2 PO Amendment, lalu Catch-weight.
+- ✅ ~~1. Bersihkan state + perbaiki generator nomor → max-based (P0-A)~~ — SELESAI Sesi #042.
+- ✅ ~~2. Selesaikan Frontend Phase 7.1 (P1-C)~~ — SELESAI Sesi #042.
+- ✅ ~~3. Putuskan & rapikan AP dualism (P0-B)~~ — SELESAI Sesi #042 (unifikasi ke Vendor Bill/SSOT).
+- **BERIKUTNYA:** backlog §4 — **Phase 7.2 PO Amendment / Version History** (P2) atau **Catch-weight / Dual-UoM** (P1), sesuai prioritas owner.
 > Setiap perubahan WAJIB lewat gate: `seed_reset.sh` → `health_check.py` → `verify_data_integrity.py` → `verify_api_contract.py` → `ux_audit.py` → `check_nav_map.py` + esbuild. Jangan rename `data-testid` yang sudah ada. Jaga invarian (`total_amount` GROSS, breakdown pajak di field terpisah).
 
 ## 6) Berkas referensi inti
